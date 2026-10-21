@@ -1,0 +1,16 @@
+@page
+@model AgentOps.Web.Pages.Analytics.SchedulesModel
+@{
+    ViewData["Title"] = "Schedules";
+}
+<div class="page-heading"><div><p class="eyebrow">ANALYTICS / HANGFIRE IN-MEMORY</p><h1>Make time<br /><span>for the signals.</span></h1><p class="page-intro">Your recurring job at a glance. Every outcome, preserved separately.</p></div></div>
+<section class="schedule-card" data-schedule>
+    <div><span class="eyebrow">RECURRING JOB</span><h2>@Model.Settings.RecurringJobId</h2><span class="badge">@(Model.Settings.Enabled ? "ENABLED" : "DISABLED")</span></div>
+    <dl><div><dt>CRON / UTC</dt><dd><code>@Model.Settings.Cron</code></dd></div><div><dt>NEXT EXECUTION / UTC</dt><dd>@(Model.Schedule?.NextExecution?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Not scheduled")</dd></div><div><dt>LAST DISPATCH / UTC</dt><dd>@(Model.Schedule?.LastExecution?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Not yet dispatched")</dd></div></dl>
+</section>
+<p class="muted">Scheduling state is process-local. Inspect the authoritative Cosmos execution history below for outcomes; Hangfire dispatch status is not an agent result.</p>
+<section class="flow-panel" data-execution-feed="Schedule" data-history-limit="@Model.HistoryLimit">
+    <div class="section-title"><h2>Scheduled execution history</h2><span id="live-status" class="connection-status" role="status">Connecting live feed...</span></div>
+    <partial name="_ExecutionTable" model="Model.Executions" />
+</section>
+<p class="muted">Change <code>Scheduling:Cron</code> or <code>Scheduling:Enabled</code>, then restart. Hangfire uses volatile in-memory storage: queued jobs and scheduling state are lost on restart, and the recurring definition is re-registered. Failed agent jobs have no automatic retries. Cosmos execution history survives restarts. A completed scaffold job is not a completed AI action.</p>

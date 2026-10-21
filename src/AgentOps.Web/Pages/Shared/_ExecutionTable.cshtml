@@ -1,0 +1,19 @@
+@model IReadOnlyList<AgentOps.Web.Features.Executions.ExecutionRecord>
+<div class="table-scroll">
+    <table class="execution-table">
+        <thead><tr><th scope="col">Execution / correlation</th><th scope="col">Started / UTC</th><th scope="col">Completed / UTC</th><th scope="col">Status</th><th scope="col">Outcome</th></tr></thead>
+        <tbody id="execution-rows">
+        @foreach (var execution in Model)
+        {
+            <tr data-execution-id="@execution.Id" data-started-at="@execution.StartedAt.ToString("O")">
+                <td><code>@execution.Id</code><small>@execution.CorrelationId</small></td>
+                <td><time datetime="@execution.StartedAt.ToString("O")">@execution.StartedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</time></td>
+                <td>@execution.CompletedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td><span class="badge">@execution.Status</span></td>
+                <td class="summary">@execution.Summary</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<p id="empty-executions" class="empty-state" hidden="@(Model.Count > 0)">No executions recorded yet. New runs will appear here.</p>

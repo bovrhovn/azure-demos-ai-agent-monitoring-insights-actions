@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/app/">
+    <Project Path="AgentOps.Web/AgentOps.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AgentOps.Tests/AgentOps.Tests.csproj" />
+  </Folder>
+</Solution>

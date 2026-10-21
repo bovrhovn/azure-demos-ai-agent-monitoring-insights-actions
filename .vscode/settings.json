@@ -1,0 +1,4 @@
+{
+  "chat.newSession.defaultMode": "Squad",
+  "dotnet.defaultSolution": "src/AgentOps.slnx"
+}

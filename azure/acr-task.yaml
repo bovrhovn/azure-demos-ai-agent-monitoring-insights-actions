@@ -1,0 +1,10 @@
+version: v1.1.0
+steps:
+  - build: >-
+      --platform linux/amd64
+      -t $Registry/{{.Values.imageRepository}}:{{.Values.imageTag}}
+      -f containers/Dockerfile .
+    env:
+      - DOCKER_BUILDKIT=1
+  - push:
+      - "$Registry/{{.Values.imageRepository}}:{{.Values.imageTag}}"

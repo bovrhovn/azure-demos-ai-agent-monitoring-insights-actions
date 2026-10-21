@@ -1,0 +1,17 @@
+**/bin
+**/obj
+**/node_modules
+**/wwwroot/js/app.js
+.git
+.azure
+.mcp.json
+.squad
+.copilot
+.vscode
+artifacts
+TestResults
+**/*.env
+**/*.pfx
+**/appsettings.Local.json
+azure/.validate.*.bicepparam
+azure/.deploy.*.bicepparam

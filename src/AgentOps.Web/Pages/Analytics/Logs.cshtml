@@ -1,0 +1,10 @@
+@page
+@model AgentOps.Web.Pages.Analytics.LogsModel
+@{
+    ViewData["Title"] = "Application logs";
+}
+<div class="page-heading"><div><p class="eyebrow">ANALYTICS / APPLICATION INSIGHTS</p><h1>The detail<br /><span>behind the signal.</span></h1><p class="page-intro">Explore recent traces without mixing telemetry with execution history.</p></div></div>
+<div data-logs>
+    <p class="empty-state" role="status">Loading the application logs viewer...</p>
+</div>
+<noscript><div class="notice">Enable JavaScript to load, refresh and page through Application Insights traces.</div></noscript>

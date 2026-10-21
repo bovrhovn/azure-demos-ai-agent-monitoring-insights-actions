@@ -1,0 +1,12 @@
+@page
+@model AgentOps.Web.Pages.Analytics.ExecutionsModel
+@{
+    ViewData["Title"] = "Endpoint runs";
+}
+<div class="page-heading"><div><p class="eyebrow">ANALYTICS / ON DEMAND</p><h1>Every invocation.<br /><span>In plain sight.</span></h1><p class="page-intro">A durable record of your endpoint runs, updated as they happen.</p></div></div>
+<div class="notice"><strong>POST <code>@Url.Content($"~{RouteConstants.ExecutionApi}")</code></strong> with an Entra bearer token containing the operator role or <code>Agent.Run</code> scope. Execution records live in Cosmos DB; application logs live on their own page.</div>
+<section class="flow-panel" data-execution-feed="Endpoint" data-history-limit="@Model.HistoryLimit">
+    <div class="section-title"><h2>Endpoint runs</h2><span id="live-status" class="connection-status" role="status">Connecting live feed...</span></div>
+    <partial name="_ExecutionTable" model="Model.Executions" />
+</section>
+<p class="muted">Live notifications are best-effort. Reconnection refreshes the authoritative history from Cosmos DB.</p>

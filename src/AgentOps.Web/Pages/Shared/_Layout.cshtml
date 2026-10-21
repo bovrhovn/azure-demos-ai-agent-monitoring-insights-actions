@@ -1,0 +1,62 @@
+@inject AgentOps.Web.Infrastructure.CosmosDataSource DataSource
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>@ViewData["Title"] / Agent Observatory</title>
+    <link rel="icon" href="@Url.Content(RouteConstants.Favicon)" type="image/svg+xml" />
+    <link rel="stylesheet" href="@Url.Content(RouteConstants.Stylesheet)" asp-append-version="true" />
+    <script src="@Url.Content(RouteConstants.BrowserScript)" asp-append-version="true" defer></script>
+</head>
+<body data-execution-hub="@Url.Content($"~{RouteConstants.ExecutionHub}")"
+      data-execution-history="@Url.Content($"~{RouteConstants.ExecutionHistory}")"
+      data-analytics-executions="@Url.Content($"~{RouteConstants.AnalyticsExecutions}")"
+      data-analytics-overview="@Url.Content($"~{RouteConstants.AnalyticsOverview}")"
+      data-analytics-logs="@Url.Content($"~{RouteConstants.AnalyticsLogs}")"
+      data-analytics-schedule="@Url.Content($"~{RouteConstants.AnalyticsSchedule}")">
+    <a href="#main" class="skip-link">Skip to content</a>
+    <header class="site-header">
+        <div class="masthead">
+            <a class="brand" href="@Url.Content($"~{RouteConstants.Root}")"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Agent Observatory</span></a>
+            <span class="brand-divider" aria-hidden="true"></span><span class="masthead-caption">Developer operations</span>
+            <div class="account"><span>@(User.Identity?.Name ?? "Authenticated operator")</span>
+                <a asp-area="MicrosoftIdentity" asp-controller="Account" asp-action="SignOut">Sign out &#8599;</a>
+            </div>
+        </div>
+        <div class="navigation-bar">
+        <nav aria-label="Primary navigation">
+            @foreach (var item in new[] { (RouteConstants.IndexPage, "Overview"), (RouteConstants.SchedulesPage, "Schedules"), (RouteConstants.ExecutionsPage, "Endpoint runs"), (RouteConstants.LogsPage, "Application logs") })
+            {
+                var active = ViewContext.RouteData.Values["page"]?.ToString() == item.Item1;
+                <a href="@Url.Content($"~{item.Item1}")" class="nav-item @(active ? "active" : "")" aria-current="@(active ? "page" : null)">
+                    @item.Item2
+                </a>
+            }
+        </nav>
+        <span class="environment-label"><span class="status-dot" aria-hidden="true"></span>Agent behavior not implemented</span>
+        </div>
+    </header>
+    <div class="workspace">
+        <main id="main" tabindex="-1">@RenderBody()</main>
+        <footer>
+            <div><a class="footer-brand" href="@Url.Content($"~{RouteConstants.Root}")">Agent Observatory</a><span class="footer-caption">Razor Pages &middot; Vue.js &middot; Minimal APIs</span></div>
+            <div class="data-source" data-environment="@DataSource.EnvironmentName" aria-label="Execution data source">
+                <span class="data-source-icon" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <ellipse cx="16" cy="8" rx="10" ry="4" />
+                        <path d="M6 8v16c0 2.2 4.5 4 10 4s10-1.8 10-4V8M6 16c0 2.2 4.5 4 10 4s10-1.8 10-4" />
+                    </svg>
+                </span>
+                <div class="data-source-copy">
+                    <span class="data-source-label">EXECUTION DATA SOURCE</span>
+                    <strong>@DataSource.Label <span class="data-source-service">@DataSource.ServiceName</span></strong>
+                    <span class="data-source-location">@DataSource.Database <span aria-hidden="true">/</span> @DataSource.Container</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

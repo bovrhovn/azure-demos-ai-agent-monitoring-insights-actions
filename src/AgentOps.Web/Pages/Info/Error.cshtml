@@ -1,0 +1,19 @@
+﻿@page
+@model AgentOps.Web.Pages.Info.ErrorModel
+@{
+    ViewData["Title"] = "Error";
+}
+
+<div class="page-heading"><div><p class="eyebrow">AGENT OBSERVATORY / ERROR</p><h1>Something went wrong.</h1><p class="page-intro">The request could not be completed. Please try again.</p></div></div>
+<section class="notice error" role="alert">
+
+@if (Model.ShowRequestId)
+{
+    <p>
+        <strong>Request ID:</strong> <code>@Model.RequestId</code>
+    </p>
+}
+
+<p>Use the request ID when checking application logs. Exception details are not displayed here.</p>
+</section>
+<a class="button-link" asp-page="@RouteConstants.IndexPage">Back to overview &#8594;</a>

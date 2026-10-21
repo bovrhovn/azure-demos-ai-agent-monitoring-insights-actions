@@ -1,0 +1,31 @@
+@page
+@model AgentOps.Web.Pages.Info.IndexModel
+@{
+    ViewData["Title"] = "Overview";
+}
+<div class="page-heading"><div><p class="eyebrow">AGENT OBSERVATORY / OVERVIEW</p><h1>A clearer view.<br /><span>A measured response.</span></h1><p class="page-intro">Understand your signals. Follow every run. Keep the next action in focus.</p></div><span class="window-label">LAST @Model.LookbackMinutes MINUTES</span></div>
+<div data-overview>
+@if (Model.QueryError is not null)
+{
+    <div class="notice error" role="alert">@Model.QueryError</div>
+}
+else if (!Model.Configured)
+{
+    <div class="notice"><strong>Connect your telemetry.</strong> Set <code>Insights:ResourceId</code> to the Application Insights resource to monitor. Sign in to Azure locally or grant the app identity Monitoring Reader. No sample metrics are shown.</div>
+}
+<section class="metrics" aria-label="Application Insights metrics">
+    <article class="metric"><span class="eyebrow">TOTAL REQUESTS</span><strong>@(Model.Overview?.Requests.ToString("N0") ?? "--")</strong><span>Incoming application traffic</span><div class="meter" aria-hidden="true"></div></article>
+    <article class="metric"><span class="eyebrow">FAILED REQUESTS</span><strong class="accent-warm">@(Model.Overview?.FailedRequests.ToString("N0") ?? "--")</strong><span>Requests marked unsuccessful</span><div class="meter warm" aria-hidden="true"></div></article>
+    <article class="metric"><span class="eyebrow">MEAN RESPONSE</span><strong>@(Model.Overview?.AverageDurationMs.ToString("N0") ?? "--")<small>ms</small></strong><span>Average request duration</span><div class="meter" aria-hidden="true"></div></article>
+    <article class="metric"><span class="eyebrow">EXCEPTIONS</span><strong>@(Model.Overview?.Exceptions.ToString("N0") ?? "--")</strong><span>Recorded application exceptions</span><div class="meter warm" aria-hidden="true"></div></article>
+</section>
+</div>
+<section class="flow-panel">
+    <div class="section-title"><h2>From signal to action</h2><span class="eyebrow">THE EXECUTION PIPELINE</span></div>
+    <div class="pipeline">
+        <div><span class="step-number">01 / OBSERVE</span><h3>Application Insights</h3><p>Read the telemetry you provide. Keep operational logs separate from execution history.</p><a href="@Url.Content($"~{RouteConstants.LogsPage}")">Inspect application logs &#8599;</a></div>
+        <div><span class="step-number">02 / TRIGGER</span><h3>On time. Or on demand.</h3><p>A process-local Hangfire schedule and an Entra-protected endpoint share one execution handler. Cosmos retains the history.</p><a href="@Url.Content($"~{RouteConstants.SchedulesPage}")">View schedules &#8599;</a></div>
+        <div><span class="step-number">03 / RESPOND</span><h3>Your agent, next.</h3><p>The Foundry factory is ready for implementation. Prompts, tools and actions are intentionally not defined.</p><a href="@Url.Content($"~{RouteConstants.ExecutionsPage}")">Watch endpoint runs &#8599;</a></div>
+    </div>
+</section>
+<div class="bottom-note"><span class="crosshair" aria-hidden="true">+</span><p><strong>Honest by design.</strong> Until agent behavior is implemented, every run is recorded as <code>NotImplemented</code>. No model is called and no action is taken.</p></div>
