@@ -5,8 +5,9 @@ Generated: 2026-10-21
 
 ## 1. Project Overview
 
-Modify the existing .NET Container App to use the current in-memory scheduler,
-retain durable Cosmos execution history, and expose a no-op authenticated Event Grid webhook.
+Deploy the current working-tree application to the existing agentops-web Container App.
+Preserve all existing runtime settings, secret references, identity, ingress, probes and scale.
+This update builds a new immutable image and changes only the application image.
 
 ## 2. Approved Target
 
@@ -24,9 +25,10 @@ retain durable Cosmos execution history, and expose a no-op authenticated Event 
 
 ## 4. Recipe Selection
 
-recipe.type: bicep
+recipe.type: azcli
 
-Retain the existing standalone Bicep/ACR Tasks deployment workflow and digest-pinned images.
+Use ACR Tasks and a digest-pinned image with az containerapp update --image.
+Do not reprovision infrastructure, rotate secrets or recreate Event Grid subscriptions.
 
 ## 5. Architecture
 
@@ -58,8 +60,25 @@ Delete only the individually approved PostgreSQL server after the new version is
 
 ## 7. Validation Proof
 
+### Current image-only update (2026-10-21)
+
+- `scripts\test.ps1`: frontend build succeeded; Release suite 134 passed,
+  5 opt-in tests skipped, zero failures.
+- `validate-deployment.ps1 -Scope group -ResourceGroup rg-aiagent -Template
+  <session-files>\app-validation.bicep`: OVERALL PASS; CLI, authentication,
+  Bicep compilation, provider/policy validation and what-if all passed.
+- Final configuration snapshot what-if: Create 0, Modify 0, Delete 0.
+  Validation snapshot stays in session storage and is never applied.
+- Static RBAC declarations and live identity roles agree: ABAC registry repository
+  reader, Key Vault Secrets User, Monitoring Reader, Foundry User and
+  database-scoped Cosmos data contributor. No role changes are needed.
+- Existing app uses the same Sweden Central target and approved subscription.
+- All existing environment variables and Key Vault references will be preserved;
+  Analytics page-size settings have valid typed defaults and need no new variables.
+
 All validation checks pass requires:
 - Core CLI/authentication, Bicep compile, ARM validate and what-if.
+- Validate an exact live configuration snapshot for this image-only update.
 - Managed project build and regression tests.
 - Static/live role verification.
 - Azure policy validation through ARM provider validation.
@@ -88,6 +107,26 @@ Validated by: azure-validate skill, 2026-10-21.
 - Remove the approved PostgreSQL server and verify final resource inventory.
 
 ## 9. Live Deployment Evidence
+
+### Latest image-only deployment (2026-10-21)
+
+- ACR run dt12 succeeded; tag deploy-20261021124405.
+- Image: bovrhovncr.azurecr.io/agent-observatory@sha256:d61c4e46f32f49f2913f23d196bcde887963802f9d14f009c74fb98ae42d0382.
+- Revision agentops-web--0000002 is Healthy, RunningAtMaxScale, one replica,
+  with 100 percent traffic.
+- URL: https://agentops-web.ambitiouspebble-72f10e6e.swedencentral.azurecontainerapps.io.
+- Live /health, /health/live and /health/ready all return HTTP 200.
+- All 17 existing runtime environment variables and both Key Vault secret
+  references are semantically unchanged. Azure CLI added empty value fields
+  beside existing secretRef fields; the secret references remain authoritative.
+- Identity, registry configuration, ingress, probes, CPU/memory and scale
+  are unchanged. No infrastructure or role assignments were redeployed.
+- Root and analytics UI redirect to sign-in; the browser bundle returns 200.
+  Unauthenticated execution API and webhook POST return 401.
+- Startup logs confirm Production, Hangfire In-Memory Storage, one worker and
+  the existing UTC recurring schedule. Event Grid remains Succeeded.
+
+### Earlier infrastructure deployment
 
 - ACR run dt11 succeeded. The Windows CLI log reader failed on Unicode after the build
   succeeded; deployment resumed with SkipBuild after verifying the existing image digest.
