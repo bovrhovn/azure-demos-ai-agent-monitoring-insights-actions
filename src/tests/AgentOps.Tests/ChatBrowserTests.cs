@@ -61,7 +61,7 @@ public sealed class ChatBrowserTests
         await cards.First.Locator("summary").ClickAsync();
         await Assertions.Expect(cards.First.Locator("dd").First).ToHaveTextAsync(reference);
         await Assertions.Expect(cards.First.Locator("dd").Nth(1)).ToHaveTextAsync(timestamp);
-        await Assertions.Expect(agent.Locator(".chat-response-list li")).ToHaveCountAsync(2);
+        await Assertions.Expect(agent.Locator(".chat-action-list li")).ToHaveCountAsync(2);
         await Assertions.Expect(agent.Locator("pre code")).ToHaveTextAsync("exceptions | take 3");
         await Assertions.Expect(agent.GetByRole(AriaRole.Cell, new() { Name = "3", Exact = true })).ToBeVisibleAsync();
         await Assertions.Expect(agent.Locator("img, script, a")).ToHaveCountAsync(0);
@@ -82,6 +82,115 @@ public sealed class ChatBrowserTests
         {
             await page.SetViewportSizeAsync(1440, 1000);
             await timeline.EvaluateAsync("element => element.scrollTop = 0");
+            await page.ScreenshotAsync(new() { Path = screenshot, FullPage = true });
+        }
+        errors.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    [TestCategory("Browser")]
+    public async Task ChatStylesPlainNextStepsAndExceptionDetailsWithoutLosingEvidenceOrExecutingSuggestions()
+    {
+        if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
+            Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
+        const string nextSteps = """
+            Suggested next steps (I can run any of these for you):
+
+            Implement/verify exponential backoff and retry behavior for 429 responses.
+            Reduce request concurrency/rate to that deployment, or shard traffic across deployments/regions.
+            Request higher quota via the Azure docs link in the exception.
+            I can drill into the operation timeline for this exception to show correlated requests, traces and dependencies (GetOperationTimeline), or fetch recent traces in the same time window. Which would you like me to do?
+            """;
+        const string details = """
+            Query window (UTC): 2026-10-28T12:57:27.7457595 — 2026-11-04T12:57:27.7457595
+            Exception reference: 99636e6907aa433db77f0d59e034dc6c
+            Timestamp (UTC): 2026-11-04T12:38:41.1484707
+            Severity: 3 (Error)
+            Summary message:
+              System.ClientModel.ClientResultException: HTTP 429 (error: rate_limit_exceeded)
+
+              Model deployment rate limit exceeded. To request more quota, see https://learn.microsoft.com/en-us/azure/ai-services/openai/quotas-limits
+
+            Top stack frames (most relevant, truncated by telemetry):
+
+            level 0: OpenAI, OpenAI.ClientPipelineExtensions+<ProcessMessageAsync>d__0.MoveNext
+            level 5: OpenAI, OpenAI.Responses.ResponsesClient+<CreateResponseAsync>d__48.MoveNext
+            level 10: Microsoft.Extensions.AI.OpenAI, Microsoft.Extensions.AI.OpenAIResponsesChatClient+<GetResponseAsync>d__7.MoveNext
+            level 15: Microsoft.Extensions.AI, Microsoft.Extensions.AI.FunctionInvokingChatClient+<GetResponseAsync>d__38.MoveNext
+            Notes:
+
+            The details payload returned by Application Insights was flagged truncated, so additional stack frames or properties may exist but were not returned.
+            This is a client-side HTTP 429 from the OpenAI/AI SDK indicating rate limiting.
+            """;
+        await using var factory = new AppFactory();
+        factory.UseKestrel();
+        using var client = factory.CreateClient();
+        var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new()
+        {
+            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"), Headless = true
+        });
+        await using var context = await browser.NewContextAsync(new()
+        {
+            ExtraHTTPHeaders = new Dictionary<string, string> { ["X-Test-Role"] = "AgentOps.Operator" },
+            ViewportSize = new() { Width = 1440, Height = 1000 }
+        });
+        await context.GrantPermissionsAsync(["clipboard-read", "clipboard-write"]);
+        var page = await context.NewPageAsync();
+        var errors = new List<string>();
+        page.PageError += (_, error) => errors.Add(error);
+        await page.GotoAsync(address + RouteConstants.ChatPage);
+        await page.GetByRole(AriaRole.Button, new() { Name = "New session" }).ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Textbox)).ToBeEnabledAsync();
+        var session = factory.Chats.Sessions.Values.Single();
+        var now = DateTimeOffset.UtcNow;
+        factory.Chats.Messages.Enqueue(new("next-steps", session.OwnerId, session.Id, "agent", nextSteps, now, 1, "test-deployment"));
+        factory.Chats.Messages.Enqueue(new("details", session.OwnerId, session.Id, "agent", details, now, 2, "test-deployment"));
+        await page.ReloadAsync();
+        var agents = page.GetByRole(AriaRole.Article, new() { Name = "Agent response" });
+        await Assertions.Expect(agents).ToHaveCountAsync(2);
+        var suggestions = agents.First.GetByRole(AriaRole.Region, new() { Name = "Suggested next steps" });
+        await Assertions.Expect(suggestions.Locator(".chat-action-list li")).ToHaveCountAsync(3);
+        await Assertions.Expect(suggestions.Locator(".chat-action-follow-up")).ToContainTextAsync("GetOperationTimeline");
+        await Assertions.Expect(suggestions.Locator(".chat-action-follow-up")).ToContainTextAsync("Which would you like me to do?");
+        await Assertions.Expect(suggestions.GetByRole(AriaRole.Button)).ToHaveCountAsync(0);
+        var diagnostic = agents.Last.GetByRole(AriaRole.Region, new() { Name = "Exception details", Exact = true });
+        await Assertions.Expect(diagnostic.Locator("dt")).ToHaveTextAsync(["Query window (UTC)", "Exception reference", "Timestamp (UTC)", "Severity"]);
+        await Assertions.Expect(diagnostic.Locator("dd").Nth(1)).ToHaveTextAsync("99636e6907aa433db77f0d59e034dc6c");
+        await Assertions.Expect(diagnostic.Locator("dd").Nth(2)).ToHaveTextAsync("2026-11-04T12:38:41.1484707");
+        await Assertions.Expect(diagnostic.Locator(".severity-error .chat-severity")).ToHaveTextAsync("3 (Error)");
+        var link = agents.Last.GetByRole(AriaRole.Link);
+        await Assertions.Expect(link).ToHaveAttributeAsync("href", "https://learn.microsoft.com/en-us/azure/ai-services/openai/quotas-limits");
+        await Assertions.Expect(link).ToHaveAttributeAsync("rel", "noopener noreferrer");
+        var frames = agents.Last.Locator(".chat-stack-frames li");
+        await Assertions.Expect(frames).ToHaveCountAsync(4);
+        await Assertions.Expect(frames.First).ToContainTextAsync("<ProcessMessageAsync>d__0.MoveNext");
+        var stackToggle = agents.Last.Locator(".chat-stack-panel summary");
+        await stackToggle.FocusAsync();
+        await stackToggle.PressAsync("Enter");
+        await Assertions.Expect(frames.First).Not.ToBeVisibleAsync();
+        await stackToggle.PressAsync("Enter");
+        await Assertions.Expect(frames.First).ToBeVisibleAsync();
+        await Assertions.Expect(agents.Last.GetByRole(AriaRole.Complementary, new() { Name = "Diagnostic notes" })).ToContainTextAsync("flagged truncated");
+        await Assertions.Expect(agents.Last.Locator("img, script")).ToHaveCountAsync(0);
+        foreach (var (agent, text) in new[] { (agents.First, nextSteps), (agents.Last, details) })
+        {
+            await agent.GetByRole(AriaRole.Button, new() { Name = "Copy agent message" }).ClickAsync();
+            await Assertions.Expect(agent.GetByRole(AriaRole.Button, new() { Name = "Message copied" })).ToBeVisibleAsync();
+            (await page.EvaluateAsync<string>("navigator.clipboard.readText()")).ReplaceLineEndings("\n").Should().Be(text.ReplaceLineEndings("\n"));
+        }
+        await page.ReloadAsync();
+        await Assertions.Expect(suggestions.Locator(".chat-action-list li")).ToHaveCountAsync(3);
+        await Assertions.Expect(frames).ToHaveCountAsync(4);
+        await page.SetViewportSizeAsync(390, 844);
+        (await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > window.innerWidth")).Should().BeFalse();
+        var timeline = page.GetByRole(AriaRole.Region, new() { Name = "Message timeline" });
+        (await timeline.EvaluateAsync<bool>("element => element.scrollWidth > element.clientWidth")).Should().BeFalse();
+        if (Environment.GetEnvironmentVariable("AGENTOPS_DIAGNOSTIC_SCREENSHOT") is { Length: > 0 } screenshot)
+        {
+            await page.SetViewportSizeAsync(1440, 1000);
+            await diagnostic.ScrollIntoViewIfNeededAsync();
             await page.ScreenshotAsync(new() { Path = screenshot, FullPage = true });
         }
         errors.Should().BeEmpty();
