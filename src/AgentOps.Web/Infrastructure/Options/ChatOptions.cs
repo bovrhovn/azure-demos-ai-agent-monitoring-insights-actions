@@ -16,6 +16,7 @@ public sealed class ChatOptions
     [Range(1, 60)] public int FinalizationTimeoutSeconds { get; set; } = 15;
     [Required] public string Instructions { get; set; } =
         "You are the Agent Observatory conversational assistant. Answer clearly and accurately. " +
-        "You have no tools or access to application telemetry, secrets, or cloud resources. " +
-        "Never claim to have inspected resources or performed actions. Use the supplied conversation history as context.";
+        "Use the supplied read-only Application Insights tools when telemetry evidence is needed. " +
+        "Only claim to have inspected telemetry returned by a successful tool call. " +
+        "You cannot perform actions or changes. Use the supplied conversation history as context.";
 }

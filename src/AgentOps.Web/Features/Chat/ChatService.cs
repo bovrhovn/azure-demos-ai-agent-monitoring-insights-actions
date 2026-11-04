@@ -65,7 +65,7 @@ public sealed class ChatService(IChatStore store, IChatAgent agent, TimeProvider
             logger.LogInformation("User message {MessageId} saved in chat session {SessionId}; invoking agent", message.Id, sessionId);
             var reply = await agent.ReplyAsync(history.Items.Append(message).ToArray(), timeout.Token);
             var response = new ChatMessage(Guid.NewGuid().ToString("N"), owner, sessionId, "agent", reply.Content,
-                time.GetUtcNow(), message.Sequence + 1, reply.Model);
+                time.GetUtcNow(), message.Sequence + 1, reply.Model) { Evidence = reply.Evidence };
             // A completed reply is committed even if the browser disconnects during finalization.
             using var finalization = new CancellationTokenSource(TimeSpan.FromSeconds(options.Value.FinalizationTimeoutSeconds));
             await store.AppendAsync(session with { UpdatedAt = response.Timestamp, MessageCount = response.Sequence },

@@ -52,6 +52,7 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IChatAgent, BasicFoundryAgentRunner>();
         services.AddSingleton<ChatService>();
         services.AddSingleton(provider => new LogsQueryClient(provider.GetRequiredService<TokenCredential>()));
+        services.AddSingleton<ITelemetryQuery, TelemetryQuery>();
         services.AddScoped<IInsightsReader, InsightsReader>();
         services.AddSingleton<CosmosDataSource>();
         services.AddHostedService<CosmosInitialization>();

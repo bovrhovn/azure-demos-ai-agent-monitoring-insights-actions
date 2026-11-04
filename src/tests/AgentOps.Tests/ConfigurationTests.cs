@@ -194,9 +194,23 @@ public sealed class ConfigurationTests
     }
 
     [TestMethod]
+    [DataRow("InsightsTools:MaxRows", "0")]
+    [DataRow("InsightsTools:MaxRows", "2")]
+    [DataRow("InsightsTools:MaxLookbackMinutes", "30")]
+    [DataRow("InsightsTools:MaxToolCalls", "0")]
+    [DataRow("InsightsTools:MaxResultCharacters", "1024")]
+    public async Task InvalidTelemetryToolLimitsFailStartup(string setting, string value)
+    {
+        await using var factory = new AppFactory(new Dictionary<string, string?> { [setting] = value });
+        var start = () => factory.Client();
+        start.Should().Throw<OptionsValidationException>();
+    }
+
+    [TestMethod]
     public void AgentFactoryRejectsMissingConfigurationAndEmptyInstructions()
     {
-        var factory = new FoundryAgentFactory(Mock.Of<TokenCredential>(), Options.Create(new FoundryOptions()), NullLogger<FoundryAgentFactory>.Instance);
+        var factory = new FoundryAgentFactory(Mock.Of<TokenCredential>(), Options.Create(new FoundryOptions()), NullLogger<FoundryAgentFactory>.Instance,
+            Options.Create(new InsightsToolOptions()));
         var missingConfiguration = () => factory.Create("instructions supplied later");
         missingConfiguration.Should().Throw<InvalidOperationException>().WithMessage("*Configure Foundry*");
         var missingInstructions = () => factory.Create("");

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AgentOps.Web;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Chat;
+using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Infrastructure;
 using FluentAssertions;
 using Microsoft.Agents.AI;
@@ -32,7 +33,7 @@ public sealed class BasicFoundryAgentRunnerTests
                 calls.Add(messages.ToArray()))
             .ReturnsAsync(new ChatResponse(new ModelMessage(ChatRole.Assistant, "A real framework reply.")) { ModelId = "model-version" });
         var factory = new Mock<IFoundryAgentFactory>();
-        factory.Setup(item => item.Create(It.IsAny<string>())).Returns(new ChatClientAgent(client.Object));
+        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>())).Returns(new ChatClientAgent(client.Object));
         await using var app = new AppFactory();
         await using var host = app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
@@ -114,9 +115,11 @@ public sealed class BasicFoundryAgentRunnerTests
             .ReturnsAsync(new ChatResponse(new ModelMessage(ChatRole.Assistant, "Teal is the colour.")) { ModelId = modelId });
         var factory = new Mock<IFoundryAgentFactory>();
         var options = new ChatOptions { Instructions = "Text-only conversation instructions", MaxOutputTokens = 123 };
-        factory.Setup(item => item.Create(options.Instructions)).Returns(new ChatClientAgent(client.Object));
+        factory.Setup(item => item.Create(It.Is<string>(text => text.StartsWith(options.Instructions)), It.IsAny<IList<AITool>>()))
+            .Returns(new ChatClientAgent(client.Object));
         var adapter = new BasicFoundryAgentRunner(factory.Object, Options.Create(options),
-            Options.Create(new FoundryOptions { ModelDeployment = "configured-deployment" }), NullLogger<BasicFoundryAgentRunner>.Instance);
+            Options.Create(new FoundryOptions { ModelDeployment = "configured-deployment" }), NullLogger<BasicFoundryAgentRunner>.Instance,
+            Mock.Of<ITelemetryQuery>(), Options.Create(new InsightsOptions()), Options.Create(new InsightsToolOptions()), TimeProvider.System);
         var now = DateTimeOffset.UtcNow;
         AgentOps.Web.Features.Chat.ChatMessage[] history =
         [
@@ -134,6 +137,23 @@ public sealed class BasicFoundryAgentRunnerTests
     }
 
     [TestMethod]
+    public async Task OutputLimitIsDisclosedRatherThanReturningASilentlyClippedAnswer()
+    {
+        var client = new Mock<IChatClient>();
+        client.Setup(chat => chat.GetResponseAsync(It.IsAny<IEnumerable<ModelMessage>>(),
+                It.IsAny<Microsoft.Extensions.AI.ChatOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatResponse(new ModelMessage(ChatRole.Assistant, "Partial explanation"))
+                { FinishReason = ChatFinishReason.Length });
+        var factory = new Mock<IFoundryAgentFactory>();
+        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>())).Returns(new ChatClientAgent(client.Object));
+        var runner = new BasicFoundryAgentRunner(factory.Object, Options.Create(new ChatOptions()), Options.Create(new FoundryOptions()),
+            NullLogger<BasicFoundryAgentRunner>.Instance, Mock.Of<ITelemetryQuery>(), Options.Create(new InsightsOptions()),
+            Options.Create(new InsightsToolOptions()), TimeProvider.System);
+        var reply = await runner.ReplyAsync([], CancellationToken.None);
+        reply.Content.Should().StartWith("Partial explanation").And.Contain("truncated by the configured output limit");
+    }
+
+    [TestMethod]
     public async Task EmptyModelOutputIsAnExplicitFailure()
     {
         var client = new Mock<IChatClient>();
@@ -141,9 +161,10 @@ public sealed class BasicFoundryAgentRunnerTests
                 It.IsAny<Microsoft.Extensions.AI.ChatOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ChatResponse(new ModelMessage(ChatRole.Assistant, "")));
         var factory = new Mock<IFoundryAgentFactory>();
-        factory.Setup(item => item.Create(It.IsAny<string>())).Returns(new ChatClientAgent(client.Object));
+        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>())).Returns(new ChatClientAgent(client.Object));
         var adapter = new BasicFoundryAgentRunner(factory.Object, Options.Create(new ChatOptions()), Options.Create(new FoundryOptions()),
-            NullLogger<BasicFoundryAgentRunner>.Instance);
+            NullLogger<BasicFoundryAgentRunner>.Instance, Mock.Of<ITelemetryQuery>(), Options.Create(new InsightsOptions()),
+            Options.Create(new InsightsToolOptions()), TimeProvider.System);
         var call = () => adapter.ReplyAsync([], CancellationToken.None);
         await call.Should().ThrowAsync<InvalidOperationException>().WithMessage("*no text*");
     }
@@ -157,9 +178,10 @@ public sealed class BasicFoundryAgentRunnerTests
                 It.IsAny<Microsoft.Extensions.AI.ChatOptions>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException(cancellation.Token));
         var factory = new Mock<IFoundryAgentFactory>();
-        factory.Setup(item => item.Create(It.IsAny<string>())).Returns(new ChatClientAgent(client.Object));
+        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>())).Returns(new ChatClientAgent(client.Object));
         var runner = new BasicFoundryAgentRunner(factory.Object, Options.Create(new ChatOptions()), Options.Create(new FoundryOptions()),
-            NullLogger<BasicFoundryAgentRunner>.Instance);
+            NullLogger<BasicFoundryAgentRunner>.Instance, Mock.Of<ITelemetryQuery>(), Options.Create(new InsightsOptions()),
+            Options.Create(new InsightsToolOptions()), TimeProvider.System);
         var call = () => runner.ReplyAsync([], cancellation.Token);
         await call.Should().ThrowAsync<OperationCanceledException>();
         client.Verify(chat => chat.GetResponseAsync(It.IsAny<IEnumerable<ModelMessage>>(),

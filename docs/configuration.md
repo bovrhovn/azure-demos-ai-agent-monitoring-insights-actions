@@ -66,7 +66,46 @@ Execution history uses the singleton Cosmos client and `/trigger` partition key.
 | `Chat:RequestsPerMinute` | `20`, range `1..120`; session/message writes per authenticated caller |
 | `Chat:TimeoutSeconds` | `120`, range `1..300`; cooperative request/model deadline |
 | `Chat:FinalizationTimeoutSeconds` | `15`, range `1..60`; independent reply-persistence deadline |
-| `Chat:Instructions` | Text-only conversational assistant; no telemetry access, tools or actions |
+| `Chat:Instructions` | Conversational assistant with read-only telemetry tools; no actions |
+
+### Read-only telemetry tools
+
+The default chat runner exposes `GetRecentExceptions`, `GetExceptionDetails`, `GetRecentTraces`
+and `GetOperationTimeline`. Queries use server-owned KQL templates against `Insights:ResourceId`
+through `LogsQueryClient.QueryResourceAsync`, with the Application Insights `exceptions`, `traces`,
+`requests` and `dependencies` schema. No vector database, embeddings, MCP server or ingestion
+connection string is required for querying.
+
+| Setting | Default / requirement |
+|---|---|
+| `InsightsTools:Enabled` | `true`; `false` removes all telemetry tools |
+| `InsightsTools:DefaultLookbackMinutes` | `60`; must not exceed the maximum |
+| `InsightsTools:MaxLookbackMinutes` | `1440`, range `1..10080` |
+| `InsightsTools:DefaultCount` | `5`; must not exceed `MaxRows` |
+| `InsightsTools:MaxRows` | `20`, range `1..100` |
+| `InsightsTools:QueryTimeoutSeconds` | `30`, range `1..120`; also bounded by the chat deadline |
+| `InsightsTools:MaxToolCalls` | `6`, range `1..12`; bounds queries and framework invocation iterations per turn |
+| `InsightsTools:MaxResultCharacters` | `16000`, range `1024..64000`; serialized tool-result budget |
+| `InsightsTools:MaxFieldCharacters` | `4000`, range `128..8000`; must be below the result budget |
+| `InsightsTools:MaxEvidenceReferences` | `100`, range `1..200`; bounded evidence references per turn/history context |
+
+The server identity needs Monitoring Reader on the configured Application Insights resource.
+Bicep grants this on the deployed component; observing a different component requires its own
+role assignment. Query access is application-wide, not delegated per-user access. Only the
+existing operator-authorized chat write path invokes the runner; readers cannot invoke tools.
+
+Tool results are field-allowlisted (no user/client fields or custom dimensions), scrub common
+credential/connection-string/token/email patterns, and mark clipped results explicitly.
+This scrubber is defense in depth, not a guarantee against arbitrary sensitive text in logs:
+do not ingest secrets or personal data, and approve telemetry disclosure to the configured model.
+Telemetry content is untrusted evidence, never tool instructions. Failures, timeouts, missing
+configuration and empty results remain distinct.
+
+Assistant messages persist bounded evidence references in the existing owner-partitioned chat
+container, atomically with the reply. Follow-ups resolve the original record and UTC query window,
+not the current ordering of a new query. No raw tool payload or model thread is persisted.
+Only references in the loaded conversation history are available; ambiguous or expired references
+require clarification or a fresh list. Existing messages without evidence remain readable.
 
 Operator sessions may create conversations and send messages; readers can only inspect their own existing conversations. A user prompt is saved before the model call. Model failures leave the prompt visible, return a safe error, and never fabricate an agent reply. Successful replies are saved atomically with updated session metadata. Calls in one conversation are serialized in the single application process; the existing one-replica restriction also applies to chat. Model invocations are not automatically retried.
 

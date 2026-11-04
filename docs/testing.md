@@ -1,5 +1,28 @@
 # Testing
 
+## Live telemetry agent verification
+
+The normal suite covers KQL templates and bounds, sanitization, explicit failures, cancellation,
+reference isolation, and real Agent Framework function invocation with a simulated model transport.
+The default chat runner and query adapter can additionally be checked against real Azure resources:
+
+```powershell
+$env:AGENTOPS_LIVE_AZURE_TESTS = 'true'
+$env:AGENTOPS_LIVE_INSIGHTS_RESOURCE_ID = '<Application Insights ARM resource ID>'
+$env:AGENTOPS_LIVE_FOUNDRY_ENDPOINT = '<Foundry project HTTPS endpoint>'
+$env:AGENTOPS_LIVE_FOUNDRY_DEPLOYMENT = '<function-calling model deployment>'
+Push-Location src
+dotnet test tests\AgentOps.Tests\AgentOps.Tests.csproj --configuration Release --filter TestCategory=LiveAzure --logger "console;verbosity=detailed"
+Pop-Location
+```
+
+Requires `az login`, Azure Monitor read permission, and Foundry model access. This opt-in test
+incurs model/query usage, prints actual model answers, and uses in-memory test chat storage rather
+than writing verification conversations to production Cosmos. It first queries Insights directly,
+then exercises exception listing, original-reference drill-down/correlation, and recent traces
+through the default runner. It reports inconclusive without explicit opt-in or without recent
+exceptions for the drill-down assertion; it never substitutes mock telemetry.
+
 The suite uses MSTest, FluentAssertions and Moq. Default HTTP/browser tests replace external execution-history and Insights adapters only inside the test host; shipping history remains in Cosmos, with no authentication fallback. Tests use the shipping Hangfire.InMemory registration and real Hangfire server.
 
 ## Fast application checks

@@ -13,6 +13,10 @@ public static class OptionsRegistration
                 "AzureAd tenant and client IDs must be GUIDs.").ValidateOnStart();
         services.AddOptions<ExecutionOptions>().BindConfiguration(ExecutionOptions.Section).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<InsightsOptions>().BindConfiguration(InsightsOptions.Section).ValidateDataAnnotations().ValidateOnStart();
+        services.AddOptions<InsightsToolOptions>().BindConfiguration(InsightsToolOptions.Section).ValidateDataAnnotations()
+            .Validate(o => o.DefaultLookbackMinutes <= o.MaxLookbackMinutes && o.DefaultCount <= o.MaxRows &&
+                o.MaxFieldCharacters < o.MaxResultCharacters,
+                "InsightsTools defaults and field size must fit within the configured maximums.").ValidateOnStart();
         services.AddOptions<AnalyticsOptions>().BindConfiguration(AnalyticsOptions.Section).ValidateDataAnnotations()
             .Validate(o => o.PageSize <= o.MaxPageSize, "Analytics:PageSize cannot exceed MaxPageSize.").ValidateOnStart();
         services.AddOptions<FoundryOptions>().BindConfiguration(FoundryOptions.Section);

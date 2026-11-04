@@ -60,6 +60,39 @@ Delete only the individually approved PostgreSQL server after the new version is
 
 ## 7. Validation Proof
 
+### Current update (2026-11-04)
+
+- User confirmed MCAPS Azure Demos, existing rg-aiagent/agentops-web in Sweden Central.
+- Deploy current on-disk source at commit 5ae814c; preserve the unrelated staged/index state.
+- User approved the required agentops/chats container on bovrhovncdb in rg-containers,
+  partitioned by /ownerId, using the repository indexing policy and serverless capacity.
+- Keep all existing resources, secrets, identity, ingress, probes and scale unchanged;
+  no infrastructure-wide deployment or permission changes.
+- Validation steps: CLI/authentication, Bicep compilation, ARM provider validation and
+  what-if for a live app configuration snapshot and the new chat container; container
+  image build; frontend/Release regression suite; static and live role verification.
+- scripts\test.ps1: frontend build passed; 182 tests passed, 10 opt-in tests skipped,
+  zero failures. npm used the user-configured package feed.
+- Existing identity has unconditional ACR Repository Reader, Key Vault Secrets User,
+  Monitoring Reader, Foundry User, and database-scoped Cosmos Data Contributor.
+- Foundry model deployment gpt-5.5 exists and is Succeeded.
+- Invoke-Pester -Path .\azure\tests -CI: 31 passed, zero failures.
+- validate-deployment.ps1 for app-validation.bicep in session storage: OVERALL PASS,
+  including ARM provider/policy validation and what-if Create 0, Modify 0, Delete 0.
+  Snapshot uses the same API version as the validation resource.
+- validate-deployment.ps1 for chat-container.bicep in session storage: OVERALL PASS.
+  Structured what-if confirms exactly one Create (agentops/chats), no modifications
+  or deletions; all other existing resources are Ignore.
+- BuildKit-enabled azure/acr-task.yaml via az acr run completed successfully (dt14)
+  at 2026-11-04T09:57:19Z. Linux/amd64 image pushed and digest verified:
+  bovrhovncr.azurecr.io/agent-observatory:deploy-20261104095049-5ae814c,
+  sha256:e6c24ef7ac0d207435a84e45c991af5fde83b7590fb400b9827ae5c7f29ca5a0.
+- Initial plain az acr build (dt13) failed because the Dockerfile requires BuildKit;
+  the repository's existing task resolved this without changing source or Dockerfile.
+- Static registry-access.bicep correctly selects Repository Reader for ABAC registries;
+  cosmos-data.bicep uses database-scoped Data Contributor covering executions and chats.
+- Validated by azure-validate workflow on 2026-11-04; all failures resolved.
+
 ### Current image-only update (2026-10-21)
 
 - `scripts\test.ps1`: frontend build succeeded; Release suite 134 passed,
@@ -107,6 +140,37 @@ Validated by: azure-validate skill, 2026-10-21.
 - Remove the approved PostgreSQL server and verify final resource inventory.
 
 ## 9. Live Deployment Evidence
+
+### Latest deployment (2026-11-04)
+
+- Current on-disk application at commit 5ae814c built with existing BuildKit ACR task.
+- ACR run dt14 succeeded; tag deploy-20261104095049-5ae814c.
+- Image: bovrhovncr.azurecr.io/agent-observatory@sha256:e6c24ef7ac0d207435a84e45c991af5fde83b7590fb400b9827ae5c7f29ca5a0.
+- Approved incremental deployment agentops-chat-20261104 succeeded in rg-containers,
+  creating only agentops/chats with /ownerId and the repository indexing policy.
+- Revision agentops-web--0000003 is Healthy, RunningAtMaxScale, one replica,
+  latestReadyRevisionName matches, and receives 100 percent traffic.
+- URL: https://agentops-web.ambitiouspebble-72f10e6e.swedencentral.azurecontainerapps.io.
+- /health, /health/live and /health/ready all return HTTP 200; readiness reads both
+  real Cosmos containers. /js/app.js returns HTTP 200, 132449 bytes.
+- Root, analytics executions and chat redirect to sign-in (302).
+  Unauthenticated execution and Event Grid webhook POSTs correctly return 401.
+- API-version-matched before/after comparison confirms configuration, identity,
+  environment and template unchanged apart from image/generated revision suffix;
+  empty value fields alongside secretRef are normalized for comparison.
+- Live RBAC rechecked: unconditional ACR Repository Reader, Monitoring Reader,
+  Key Vault Secrets User, Foundry User, and database-scoped Cosmos Data Contributor.
+- Logs confirm Production startup, Hangfire In-Memory Storage, one worker and the
+  configured recurring schedule. Scheduled execution persisted NotImplemented as
+  intended; the execution agent remains the intentionally pending implementation.
+- Existing Event Grid subscription agent-webhook remains Succeeded and targets
+  /api/webhooks/eventgrid. Full event delivery verification is NOT claimed:
+  current CLI principal lacks topic publish permission, topic local authentication
+  is disabled, and Key Vault correctly blocks this machine outside its private link.
+  No permissions, keys, firewall settings or authentication policies were changed.
+- Interactive sign-in/chat and opt-in browser/emulator tests were not verified live.
+  Local Release suite: 182 passed, 10 skipped; infrastructure suite: 31 passed.
+- All pre-existing staged additions/missing legacy files remain untouched.
 
 ### Latest image-only deployment (2026-10-21)
 
