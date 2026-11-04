@@ -1,6 +1,6 @@
 namespace AgentOps.Web.Infrastructure;
 
-/// <summary>Foundry factory inputs; agent behavior remains deferred.</summary>
+/// <summary>Foundry model inputs shared by the factory and conversational runner.</summary>
 public sealed class FoundryOptions
 {
     public const string Section = "Foundry";

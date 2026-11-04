@@ -6,6 +6,7 @@ using AgentOps.Web;
 using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Infrastructure;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Tests;
@@ -13,6 +14,90 @@ namespace AgentOps.Tests;
 [TestClass]
 public sealed class ChatTests
 {
+    [TestMethod]
+    public async Task DeletingSessionRemovesItsMessagesButPreservesOtherConversations()
+    {
+        await using var factory = new AppFactory();
+        using var client = factory.Client("AgentOps.Operator");
+        await AuthorizePosts(client);
+        var removed = await Create(client);
+        await Send(client, removed.Id, "Remove this conversation");
+        var retained = await Create(client);
+        await Send(client, retained.Id, "Keep this conversation");
+        var response = await client.DeleteAsync($"{RouteConstants.ChatSessions}/{removed.Id}");
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+        (await client.GetAsync($"{RouteConstants.ChatSessions}/{removed.Id}/messages")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.GetFromJsonAsync<ChatPage<ChatSession>>(RouteConstants.ChatSessions))!.Items
+            .Should().ContainSingle().Which.Id.Should().Be(retained.Id);
+        factory.Chats.Messages.Should().HaveCount(2).And.OnlyContain(message => message.SessionId == retained.Id);
+        (await client.DeleteAsync($"{RouteConstants.ChatSessions}/{removed.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [TestMethod]
+    public async Task DeletingRequiresOperatorAntiforgeryAndSessionOwnership()
+    {
+        await using var factory = new AppFactory();
+        using var owner = factory.Client("AgentOps.Operator");
+        await AuthorizePosts(owner);
+        var session = await Create(owner);
+        await Send(owner, session.Id, "Private saved message");
+        var path = $"{RouteConstants.ChatSessions}/{session.Id}";
+        using var anonymous = factory.Client();
+        using var reader = factory.Client("AgentOps.Reader");
+        using var noToken = factory.Client("AgentOps.Operator");
+        using var other = factory.Client("AgentOps.Operator");
+        other.DefaultRequestHeaders.Add("X-Test-User", "another-account");
+        await AuthorizePosts(other);
+        (await anonymous.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await reader.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await noToken.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await other.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        factory.Chats.Sessions.Should().ContainSingle();
+        factory.Chats.Messages.Should().HaveCount(2);
+    }
+
+    [TestMethod]
+    public async Task FailedDeletionRemainsRetryableAndBlocksNewMessages()
+    {
+        await using var factory = new AppFactory();
+        using var client = factory.Client("AgentOps.Operator");
+        await AuthorizePosts(client);
+        var session = await Create(client);
+        await Send(client, session.Id, "Existing message");
+        factory.Chats.FailDelete = true;
+        var path = $"{RouteConstants.ChatSessions}/{session.Id}";
+        (await client.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        var sessions = await client.GetFromJsonAsync<ChatPage<ChatSession>>(RouteConstants.ChatSessions);
+        sessions!.Items.Should().ContainSingle().Which.IsDeleting.Should().BeTrue();
+        (await client.PostAsJsonAsync(path + "/messages", new { content = "Must not run" })).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await client.GetAsync(path + "/messages")).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        factory.ChatAgent.Calls.Should().ContainSingle();
+        factory.Chats.FailDelete = false;
+        (await client.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        factory.Chats.Sessions.Should().BeEmpty();
+        factory.Chats.Messages.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public async Task DeletionIsRejectedWhileAgentReplyIsInFlightAndCanRunAfterwards()
+    {
+        var store = new MemoryChatStore();
+        var agent = new FakeChatAgent { Wait = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var service = new ChatService(store, agent, TimeProvider.System, Options.Create(new ChatOptions()), NullLogger<ChatService>.Instance);
+        var session = await service.CreateAsync("owner", CancellationToken.None);
+        var pending = service.SendAsync("owner", session.Id, "In flight", CancellationToken.None);
+        await agent.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var delete = () => service.DeleteAsync("owner", session.Id, CancellationToken.None);
+        try { await delete.Should().ThrowAsync<ChatBusyException>(); }
+        finally { agent.Wait.TrySetResult(); }
+        await pending;
+        (await service.DeleteAsync("owner", session.Id, CancellationToken.None)).Should().BeTrue();
+        store.Sessions.Should().BeEmpty();
+        store.Messages.Should().BeEmpty();
+        (await service.SendAsync("owner", session.Id, "Deleted", CancellationToken.None)).Should().BeNull();
+    }
+
     [TestMethod]
     public async Task ChatPersistsBothRolesAndSuppliesOrderedHistoryOnSubsequentPrompts()
     {
@@ -127,7 +212,7 @@ public sealed class ChatTests
     {
         var store = new MemoryChatStore();
         var agent = new FakeChatAgent { Wait = new(TaskCreationOptions.RunContinuationsAsynchronously) };
-        var service = new ChatService(store, agent, TimeProvider.System, Options.Create(new ChatOptions()));
+        var service = new ChatService(store, agent, TimeProvider.System, Options.Create(new ChatOptions()), NullLogger<ChatService>.Instance);
         using var cancellation = new CancellationTokenSource();
         var session = await service.CreateAsync("owner", CancellationToken.None);
         var pending = service.SendAsync("owner", session.Id, "First", cancellation.Token);
@@ -148,7 +233,7 @@ public sealed class ChatTests
     {
         var store = new MemoryChatStore { FailAppend = true };
         var agent = new FakeChatAgent();
-        var service = new ChatService(store, agent, TimeProvider.System, Options.Create(new ChatOptions()));
+        var service = new ChatService(store, agent, TimeProvider.System, Options.Create(new ChatOptions()), NullLogger<ChatService>.Instance);
         var session = await service.CreateAsync("owner", CancellationToken.None);
         var send = () => service.SendAsync("owner", session.Id, "Do not lose this", CancellationToken.None);
         await send.Should().ThrowAsync<InvalidOperationException>();
@@ -185,6 +270,7 @@ internal sealed class MemoryChatStore : IChatStore
     public ConcurrentDictionary<(string Owner, string Id), ChatSession> Sessions { get; } = new();
     public ConcurrentQueue<ChatMessage> Messages { get; } = new();
     public bool FailAppend { get; set; }
+    public bool FailDelete { get; set; }
     public Task CreateAsync(ChatSession session, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -214,12 +300,25 @@ internal sealed class MemoryChatStore : IChatStore
         Messages.Enqueue(message);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAsync(ChatSession session, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Sessions[(session.OwnerId, session.Id)] = session with { IsDeleting = true };
+        if (FailDelete) throw new InvalidOperationException("test deletion failure");
+        var retained = Messages.Where(message => message.OwnerId != session.OwnerId || message.SessionId != session.Id).ToArray();
+        Messages.Clear();
+        foreach (var message in retained) Messages.Enqueue(message);
+        Sessions.TryRemove((session.OwnerId, session.Id), out _);
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class FakeChatAgent : IChatAgent
 {
     public ConcurrentQueue<IReadOnlyList<ChatMessage>> Calls { get; } = new();
     public bool Fail { get; set; }
+    public Exception? Failure { get; set; }
     public TaskCompletionSource? Wait { get; set; }
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public async Task<ChatReply> ReplyAsync(IReadOnlyList<ChatMessage> history, CancellationToken cancellationToken)
@@ -227,6 +326,7 @@ internal sealed class FakeChatAgent : IChatAgent
         Calls.Enqueue(history);
         Started.TrySetResult();
         if (Wait is not null) await Wait.Task;
+        if (Failure is not null) throw Failure;
         if (Fail) throw new InvalidOperationException("private model failure");
         return new($"Reply to: {history.Last().Content}", "test-deployment");
     }

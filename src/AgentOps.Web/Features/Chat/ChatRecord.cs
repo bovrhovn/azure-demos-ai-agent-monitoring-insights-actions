@@ -5,6 +5,7 @@ public sealed record ChatSession(string Id, string OwnerId, string Title, DateTi
 {
     public const int TitleMaxLength = 60;
     public string Kind { get; init; } = "session";
+    public bool IsDeleting { get; init; }
 }
 
 public sealed record ChatMessage(string Id, string OwnerId, string SessionId, string Role, string Content,
@@ -24,6 +25,7 @@ public interface IChatStore
     Task<ChatPage<ChatSession>> ListAsync(string ownerId, int limit, string? continuationToken, CancellationToken cancellationToken);
     Task<ChatHistory> MessagesAsync(string ownerId, string sessionId, int limit, int? before, CancellationToken cancellationToken);
     Task AppendAsync(ChatSession session, ChatMessage message, CancellationToken cancellationToken);
+    Task DeleteAsync(ChatSession session, CancellationToken cancellationToken);
 }
 
 public interface IChatAgent

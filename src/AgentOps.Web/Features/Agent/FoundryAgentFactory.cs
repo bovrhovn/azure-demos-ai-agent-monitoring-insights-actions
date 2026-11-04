@@ -7,7 +7,8 @@ using Microsoft.Extensions.Options;
 namespace AgentOps.Web.Features.Agent;
 
 /// <summary>Factory boundary keeps deployment details out of execution handlers.</summary>
-public sealed class FoundryAgentFactory(TokenCredential credential, IOptions<FoundryOptions> options) : IFoundryAgentFactory
+public sealed class FoundryAgentFactory(TokenCredential credential, IOptions<FoundryOptions> options,
+    ILogger<FoundryAgentFactory> logger) : IFoundryAgentFactory
 {
     public AIAgent Create(string instructions)
     {
@@ -15,7 +16,11 @@ public sealed class FoundryAgentFactory(TokenCredential credential, IOptions<Fou
         var settings = options.Value;
         if (!Uri.TryCreate(settings.ProjectEndpoint, UriKind.Absolute, out var uri) ||
             uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(settings.ModelDeployment))
-            throw new InvalidOperationException("Configure Foundry:ProjectEndpoint and Foundry:ModelDeployment before using the agent.");
+        {
+            logger.LogWarning("Foundry agent creation rejected because the project endpoint or model deployment is not configured");
+            throw new FoundryConfigurationException();
+        }
+        logger.LogInformation("Creating Foundry agent {AgentName} for deployment {ModelDeployment}", settings.AgentName, settings.ModelDeployment);
         return new AIProjectClient(uri, credential).AsAIAgent(
             model: settings.ModelDeployment, name: settings.AgentName, instructions: instructions);
     }

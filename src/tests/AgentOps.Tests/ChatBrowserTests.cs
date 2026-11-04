@@ -1,4 +1,5 @@
 using AgentOps.Web;
+using AgentOps.Web.Features.Agent;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -10,6 +11,72 @@ namespace AgentOps.Tests;
 [TestClass]
 public sealed class ChatBrowserTests
 {
+    [TestMethod]
+    [TestCategory("Browser")]
+    public async Task ChatDeletionConfirmsBeforeRemovalAndAllowsRetryAfterFailedCleanup()
+    {
+        if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
+            Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
+        await using var factory = new AppFactory();
+        factory.UseKestrel();
+        using var client = factory.CreateClient();
+        var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new()
+        {
+            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"), Headless = true
+        });
+        await using var context = await browser.NewContextAsync(new()
+        {
+            ExtraHTTPHeaders = new Dictionary<string, string> { ["X-Test-Role"] = "AgentOps.Operator" },
+            ViewportSize = new() { Width = 390, Height = 844 }
+        });
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(address + RouteConstants.ChatPage);
+        var input = page.GetByRole(AriaRole.Textbox, new() { Name = "Message your agent" });
+        var newSession = page.GetByRole(AriaRole.Button, new() { Name = "New session" });
+        await newSession.ClickAsync();
+        await input.FillAsync("Remove this conversation");
+        await input.PressAsync("Enter");
+        await Assertions.Expect(page.GetByRole(AriaRole.Article, new() { Name = "Agent response" })).ToHaveCountAsync(1);
+        var removed = factory.Chats.Sessions.Values.Single().Id;
+        await newSession.ClickAsync();
+        await input.FillAsync("Keep this conversation");
+        await input.PressAsync("Enter");
+        await Assertions.Expect(page.GetByRole(AriaRole.Article, new() { Name = "Agent response" })).ToHaveCountAsync(1);
+        await page.Locator(".chat-session").Filter(new() { HasText = "Remove this conversation" }).ClickAsync();
+        var accept = false;
+        page.Dialog += async (_, dialog) =>
+        {
+            if (accept) await dialog.AcceptAsync();
+            else await dialog.DismissAsync();
+        };
+        var delete = page.GetByRole(AriaRole.Button, new() { Name = "Delete session", Exact = true });
+        await delete.ClickAsync();
+        await Assertions.Expect(page.Locator(".chat-session")).ToHaveCountAsync(2);
+        factory.Chats.Sessions.Values.Should().Contain(session => session.Id == removed);
+        accept = true;
+        await delete.ClickAsync();
+        await Assertions.Expect(page.Locator(".chat-session")).ToHaveCountAsync(1);
+        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Keep this conversation" })).ToBeVisibleAsync();
+        factory.Chats.Sessions.Values.Should().NotContain(session => session.Id == removed);
+        factory.Chats.Messages.Should().HaveCount(2).And.OnlyContain(message => message.SessionId != removed);
+        factory.Chats.FailDelete = true;
+        await delete.ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("HTTP 500");
+        var retry = page.GetByRole(AriaRole.Button, new() { Name = "Retry deletion" });
+        await Assertions.Expect(retry).ToBeVisibleAsync();
+        await Assertions.Expect(input).ToBeDisabledAsync();
+        factory.Chats.FailDelete = false;
+        await retry.ClickAsync();
+        await Assertions.Expect(page.Locator(".chat-session")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByRole(AriaRole.Article)).ToHaveCountAsync(0);
+        await Assertions.Expect(input).ToBeDisabledAsync();
+        factory.Chats.Sessions.Should().BeEmpty();
+        factory.Chats.Messages.Should().BeEmpty();
+        (await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > window.innerWidth")).Should().BeFalse();
+    }
+
     [TestMethod]
     [TestCategory("Browser")]
     public async Task ChatWorkspaceCreatesAndRestoresSessionsSendsHistoryAndCopiesSafeModelLabelledReplies()
@@ -84,12 +151,15 @@ public sealed class ChatBrowserTests
 
     [TestMethod]
     [TestCategory("Browser")]
-    public async Task ChatShowsModelFailureAndRetainsSavedPromptWithoutInventingAReply()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ChatShowsModelFailureAndRetainsSavedPromptWithoutInventingAReply(bool missingConfiguration)
     {
         if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
             Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
         await using var factory = new AppFactory();
-        factory.ChatAgent.Fail = true;
+        if (missingConfiguration) factory.ChatAgent.Failure = new FoundryConfigurationException();
+        else factory.ChatAgent.Fail = true;
         factory.UseKestrel();
         using var client = factory.CreateClient();
         var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
@@ -108,6 +178,12 @@ public sealed class ChatBrowserTests
         await page.GetByRole(AriaRole.Textbox).FillAsync("A prompt worth saving");
         await page.GetByRole(AriaRole.Button, new() { Name = "Send", Exact = true }).ClickAsync();
         await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("Refresh to check saved messages");
+        await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("Reference:");
+        if (missingConfiguration)
+        {
+            await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("Foundry:ProjectEndpoint");
+            await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("HTTP 503");
+        }
         await Assertions.Expect(page.GetByRole(AriaRole.Article, new() { Name = "User prompt" })).ToContainTextAsync("A prompt worth saving");
         await Assertions.Expect(page.GetByRole(AriaRole.Article, new() { Name = "Agent response" })).ToHaveCountAsync(0);
     }

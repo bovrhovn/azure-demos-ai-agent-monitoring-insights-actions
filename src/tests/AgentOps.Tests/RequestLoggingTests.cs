@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
 using AgentOps.Web;
+using AgentOps.Web.Features.Agent;
+using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Pages.Analytics;
@@ -8,12 +10,95 @@ using AgentOps.Web.Pages.Info;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Net.Http.Json;
 
 namespace AgentOps.Tests;
 
 [TestClass]
 public sealed class RequestLoggingTests
 {
+    [TestMethod]
+    public async Task ChatLogsLifecycleMetadataWithoutConversationContentsOrOwnerIdentity()
+    {
+        await using var factory = new AppFactory();
+        var logs = new RequestLogs();
+        await using var host = factory.WithWebHostBuilder(builder => builder.ConfigureLogging(logging => logging.AddProvider(logs)));
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "AgentOps.Operator");
+        client.DefaultRequestHeaders.Add("X-Test-User", "private-owner");
+        await ChatTests.AuthorizePosts(client);
+        var created = await client.PostAsync(RouteConstants.ChatSessions, null);
+        var session = (await created.Content.ReadFromJsonAsync<ChatSession>())!;
+        var path = $"{RouteConstants.ChatSessions}/{session.Id}";
+        (await client.PostAsJsonAsync(path + "/messages", new { content = "private prompt content" })).EnsureSuccessStatusCode();
+        (await client.DeleteAsync(path)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var entries = logs.Entries.Where(entry => entry.Category == typeof(ChatService).FullName).ToArray();
+        entries.Should().Contain(entry => entry.Message.Contains("created"));
+        entries.Should().Contain(entry => entry.Message.StartsWith("Loaded 0 context messages"));
+        entries.Should().Contain(entry => entry.Message.Contains("invoking agent"));
+        entries.Should().Contain(entry => entry.State.ContainsKey("Model") && Equals(entry.State["Model"], "test-deployment"));
+        entries.Should().Contain(entry => entry.Message.EndsWith("and its messages deleted"));
+        entries.Should().OnlyContain(entry => entry.State.ContainsKey("SessionId") && Equals(entry.State["SessionId"], session.Id));
+        logs.Entries.Should().OnlyContain(entry => !entry.Message.Contains("private", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    [DataRow("agent")]
+    [DataRow("persistence")]
+    [DataRow("deletion")]
+    public async Task ChatLogsExceptionsWithSessionIdAndDoesNotReportSuccessfulCompletion(string failure)
+    {
+        await using var factory = new AppFactory();
+        var logs = new RequestLogs();
+        await using var host = factory.WithWebHostBuilder(builder => builder.ConfigureLogging(logging => logging.AddProvider(logs)));
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "AgentOps.Operator");
+        await ChatTests.AuthorizePosts(client);
+        var session = (await (await client.PostAsync(RouteConstants.ChatSessions, null)).Content.ReadFromJsonAsync<ChatSession>())!;
+        factory.ChatAgent.Fail = failure == "agent";
+        factory.Chats.FailAppend = failure == "persistence";
+        factory.Chats.FailDelete = failure == "deletion";
+        var path = $"{RouteConstants.ChatSessions}/{session.Id}";
+        var response = failure == "deletion" ? await client.DeleteAsync(path)
+            : await client.PostAsJsonAsync(path + "/messages", new { content = "private prompt" });
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        var entries = logs.Entries.Where(entry => entry.Category == typeof(ChatService).FullName).ToArray();
+        var error = entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error).Subject;
+        error.Exception.Should().BeOfType<InvalidOperationException>();
+        error.State["SessionId"].Should().Be(session.Id);
+        entries.Should().NotContain(entry => entry.Message.StartsWith("Agent message") || entry.Message.EndsWith("and its messages deleted"));
+        entries.Should().OnlyContain(entry => !entry.Message.Contains("private", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public async Task FoundryFactoryAndRunnerLogConfigurationFailureWithoutInstructionsOrPrompts()
+    {
+        await using var factory = new AppFactory(new Dictionary<string, string?> { ["Foundry:ProjectEndpoint"] = "" });
+        var logs = new RequestLogs();
+        await using var host = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureLogging(logging => logging.AddProvider(logs));
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IChatAgent>();
+                services.AddSingleton<IChatAgent, BasicFoundryAgentRunner>();
+            });
+        });
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "AgentOps.Operator");
+        await ChatTests.AuthorizePosts(client);
+        var session = (await (await client.PostAsync(RouteConstants.ChatSessions, null)).Content.ReadFromJsonAsync<ChatSession>())!;
+        (await client.PostAsJsonAsync($"{RouteConstants.ChatSessions}/{session.Id}/messages", new { content = "private prompt" }))
+            .StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        logs.Entries.Should().Contain(entry => entry.Category == typeof(FoundryAgentFactory).FullName && entry.Level == LogLevel.Warning);
+        logs.Entries.Should().Contain(entry => entry.Category == typeof(BasicFoundryAgentRunner).FullName &&
+            entry.Level == LogLevel.Error && entry.Exception is FoundryConfigurationException);
+        logs.Entries.Should().OnlyContain(entry => !entry.Message.Contains("private", StringComparison.OrdinalIgnoreCase));
+    }
+
     [TestMethod]
     [DataRow(RouteConstants.SchedulesPage, typeof(SchedulesModel), "Schedules page loaded")]
     [DataRow(RouteConstants.ExecutionsPage, typeof(ExecutionsModel), "Executions page loaded")]

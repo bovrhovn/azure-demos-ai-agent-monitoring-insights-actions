@@ -24,7 +24,7 @@ No credentials belong in committed JSON, Dockerfiles, documentation examples wit
 | `Insights:LookbackMinutes` | `60`, range `1..10080` |
 | `Insights:LogLimit` | `50`, range `1..200` |
 
-Logs query `AppTraces`; overview queries `AppRequests` and `AppExceptions` on a workspace-based Application Insights resource. Queries use the server's `DefaultAzureCredential`, not the signed-in browser user's delegated identity.
+Logs query `AppTraces`; overview queries `AppRequests` and `AppExceptions` on a workspace-based Application Insights resource. Azure SDK clients share the server's credential, not the signed-in browser user's delegated identity: `DefaultAzureCredential` outside Production, and `ManagedIdentityCredential` in Production.
 
 ## Persistence
 
@@ -37,7 +37,7 @@ Logs query `AppTraces`; overview queries `AppRequests` and `AppExceptions` on a 
 | `Cosmos:InitializeDatabase` | `false`; Development JSON sets `true`; rejected outside Development |
 | `Cosmos:AllowInsecureEmulatorTls` | `false`; rejected outside Development |
 
-Production never uses a Cosmos key/connection string. The Cosmos SDK uses `DefaultAzureCredential` and requires Cosmos **data-plane** RBAC. Azure control-plane Contributor alone is insufficient.
+Production never uses a Cosmos key/connection string. The Cosmos SDK uses the shared `ManagedIdentityCredential` and requires Cosmos **data-plane** RBAC. Azure control-plane Contributor alone is insufficient.
 
 The footer identifies the configured execution data source: **Cosmos development**
 with **Local emulator** in Development, or **Cosmos production** with the account
@@ -69,6 +69,10 @@ Execution history uses the singleton Cosmos client and `/trigger` partition key.
 | `Chat:Instructions` | Text-only conversational assistant; no telemetry access, tools or actions |
 
 Operator sessions may create conversations and send messages; readers can only inspect their own existing conversations. A user prompt is saved before the model call. Model failures leave the prompt visible, return a safe error, and never fabricate an agent reply. Successful replies are saved atomically with updated session metadata. Calls in one conversation are serialized in the single application process; the existing one-replica restriction also applies to chat. Model invocations are not automatically retried.
+
+Operators can delete their own session and all saved messages from the chat header after confirmation. Deletion and sending share the same per-conversation concurrency guard. Failed or canceled cleanup can be retried; a persistent deletion marker blocks new messages until cleanup finishes.
+
+`ChatService`, the Cosmos chat adapter, the Foundry runner/factory and Cosmos initialization emit structured `ILogger` events. Logs include session/message IDs, history/result counts, model/deployment metadata, timings and exception objects for failed operations. Cancellation is logged separately from errors. Message text, session titles, owner identities, instructions and credentials are not included in application log templates; provider exception details stay server-side.
 
 ## Event Grid webhook
 
@@ -110,9 +114,11 @@ The handler timeout is cooperative: future agent/tool implementations must honor
 | `Hosting:KnownNetworks` | Empty; optional array of trusted CIDR networks |
 | `AllowedHosts` | `localhost`; Bicep supplies the Container App host |
 | `ASPNETCORE_ENVIRONMENT` | The container defaults to `Production`; local launcher explicitly selects `Development` |
-| `AZURE_CLIENT_ID` | In Azure, the user-assigned managed identity client ID, not the OIDC app registration client ID |
+| `AZURE_CLIENT_ID` | Production user-assigned managed identity client ID; if omitted, use system-assigned identity. This is not the OIDC app registration client ID. |
 
-The factory validates Foundry endpoint/model inputs only when asked to create an agent. Startup and placeholder runs do not require a model and do not create or invoke an agent. The preview `Microsoft.Agents.AI.AzureAI` package is pinned; use `--prerelease` explicitly when evaluating upgrades.
+Chat uses `BasicFoundryAgentRunner` through `IChatAgent`. It creates a Microsoft Agent Framework agent with `FoundryAgentFactory`, supplies Cosmos conversation history with each prompt, and records the model from the response (or the configured deployment). Startup and automated placeholder runs do not require a model and do not invoke one. The preview `Microsoft.Agents.AI.AzureAI` package is pinned; use `--prerelease` explicitly when evaluating upgrades.
+
+The factory validates endpoint/model inputs when creating an agent. Missing or invalid settings return HTTP 503 with a configuration message rather than an unexplained 500. The UI shows a correlation reference for failures; full exception details remain in server logs. A saved prompt does not imply the model was called. Configure `Foundry:ProjectEndpoint` and `Foundry:ModelDeployment` locally with user-secrets, then restart the app. Azure deployments supply these settings through Bicep. No API key is required.
 
 `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` are processed before HTTPS redirection, Entra authentication and SignalR origin validation. Forwarded hosts must match `AllowedHosts`; untrusted peers cannot change the external URL. Default local hosting retains ASP.NET Core's loopback trust.
 

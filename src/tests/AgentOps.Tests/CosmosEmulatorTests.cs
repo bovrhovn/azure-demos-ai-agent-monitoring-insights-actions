@@ -30,12 +30,12 @@ public sealed class CosmosEmulatorTests
             Database = "test-chat-" + Guid.NewGuid().ToString("N"), InitializeDatabase = true
         });
         var chat = Options.Create(new ChatOptions());
-        var initialization = new CosmosInitialization(client, cosmos, chat);
+        var initialization = new CosmosInitialization(client, cosmos, chat, NullLogger<CosmosInitialization>.Instance);
         try
         {
             await initialization.StartAsync(timeout.Token);
             await initialization.StartAsync(timeout.Token);
-            var store = new CosmosChatStore(client, cosmos, chat);
+            var store = new CosmosChatStore(client, cosmos, chat, NullLogger<CosmosChatStore>.Instance);
             var now = DateTimeOffset.UtcNow;
             var session = new ChatSession("session", "owner", "Conversation", now, now);
             await store.CreateAsync(session, timeout.Token);
@@ -43,7 +43,7 @@ public sealed class CosmosEmulatorTests
             await store.AppendAsync(session with { MessageCount = 1 }, prompt, timeout.Token);
             var reply = new ChatMessage("reply", "owner", session.Id, "agent", "Teal.", now.AddSeconds(1), 2, "model");
             await store.AppendAsync(session with { MessageCount = 2, UpdatedAt = reply.Timestamp }, reply, timeout.Token);
-            var restored = new CosmosChatStore(client, cosmos, chat);
+            var restored = new CosmosChatStore(client, cosmos, chat, NullLogger<CosmosChatStore>.Instance);
             (await restored.MessagesAsync("owner", session.Id, 10, null, timeout.Token)).Items.Should().Equal(prompt, reply);
             var latest = await restored.MessagesAsync("owner", session.Id, 1, null, timeout.Token);
             latest.HasMore.Should().BeTrue();
@@ -57,6 +57,9 @@ public sealed class CosmosEmulatorTests
             var fail = () => restored.AppendAsync(session with { Id = "missing-session" }, prompt with { Id = "not-committed" }, timeout.Token);
             await fail.Should().ThrowAsync<CosmosException>();
             (await restored.MessagesAsync("owner", session.Id, 10, null, timeout.Token)).Items.Should().HaveCount(2);
+            await restored.DeleteAsync(session, timeout.Token);
+            (await restored.GetAsync("owner", session.Id, timeout.Token)).Should().BeNull();
+            (await restored.MessagesAsync("owner", session.Id, 10, null, timeout.Token)).Items.Should().BeEmpty();
         }
         finally
         {

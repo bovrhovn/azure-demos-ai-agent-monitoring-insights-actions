@@ -11,7 +11,7 @@ flowchart LR
     API --> Execute
     Execute --> Agent[IAgentRunner / TODO]
     Agent -. future implementation .-> Factory[IFoundryAgentFactory]
-    Factory -. DefaultAzureCredential .-> Foundry[Foundry AIProjectClient]
+    Factory -. Azure SDK credential .-> Foundry[Foundry AIProjectClient]
     Execute --> Cosmos[(Cosmos execution history)]
     Execute --> Hub[SignalR notifications]
     Hub --> Razor
@@ -45,7 +45,7 @@ The browser receives only committed execution records. Full execution history is
 
 Development connects to the local Cosmos emulator using a connection string. The direct web launcher prefers the native Windows emulator; no container orchestration is required. The app provisions the Development database and execution-history container. Hangfire needs no external storage.
 
-Outside Development, Cosmos requires a trusted HTTPS endpoint and `DefaultAzureCredential`; insecure emulator TLS, connection strings and app-driven Cosmos provisioning are rejected. Bicep provisions the Cosmos resources and grants the app identity data-plane access to the database.
+Outside Development, Cosmos requires a trusted HTTPS endpoint and token authentication; insecure emulator TLS, connection strings and app-driven Cosmos provisioning are rejected. Azure SDK clients share `DefaultAzureCredential` outside Production and `ManagedIdentityCredential` in Production, selecting the user-assigned identity from `AZURE_CLIENT_ID` when configured. Bicep provisions the Cosmos resources and grants the app identity data-plane access to the database.
 
 An existing Cosmos account is referenced, never redeclared for an update. Only the dedicated database/container and scoped role are deployed in its resource group. Private-account reuse creates a VNet-integrated Container Apps environment, private endpoint and private DNS in the app resource group, preserving the shared account's disabled public access.
 

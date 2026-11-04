@@ -1,16 +1,19 @@
 using System.Security.Claims;
 using AgentOps.Web.Features.Agent;
+using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Identity;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Scheduling;
 using Azure.Core;
+using Azure.Identity;
 using FluentAssertions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Hangfire;
 using Hangfire.InMemory;
@@ -20,6 +23,33 @@ namespace AgentOps.Tests;
 [TestClass]
 public sealed class ConfigurationTests
 {
+    [TestMethod]
+    [DataRow("Development", null)]
+    [DataRow("Staging", null)]
+    [DataRow("Production", null)]
+    [DataRow("Production", "33333333-3333-3333-3333-333333333333")]
+    public void AzureSdkCompositionUsesDefaultCredentialsLocallyAndOnlyManagedIdentityInProduction(string environmentName, string? clientId)
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(item => item.EnvironmentName).Returns(environmentName);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["AZURE_CLIENT_ID"] = clientId
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddAgentOpsServices(environment.Object);
+        using var provider = services.BuildServiceProvider();
+        var credential = provider.GetRequiredService<TokenCredential>();
+        if (environmentName == Environments.Production) credential.Should().BeOfType<ManagedIdentityCredential>();
+        else credential.Should().BeOfType<DefaultAzureCredential>();
+        provider.GetRequiredService<TokenCredential>().Should().BeSameAs(credential);
+        provider.GetRequiredService<IChatAgent>().Should().BeOfType<BasicFoundryAgentRunner>();
+        provider.GetRequiredService<IAgentRunner>().Should().BeOfType<PendingAgentRunner>(
+            "automated actions remain disabled; the conversational runner only serves chat");
+    }
+
     [TestMethod]
     public void EntraLoginBindsManagedIdentityFederationWithoutClientSecret()
     {
@@ -166,7 +196,7 @@ public sealed class ConfigurationTests
     [TestMethod]
     public void AgentFactoryRejectsMissingConfigurationAndEmptyInstructions()
     {
-        var factory = new FoundryAgentFactory(Mock.Of<TokenCredential>(), Options.Create(new FoundryOptions()));
+        var factory = new FoundryAgentFactory(Mock.Of<TokenCredential>(), Options.Create(new FoundryOptions()), NullLogger<FoundryAgentFactory>.Instance);
         var missingConfiguration = () => factory.Create("instructions supplied later");
         missingConfiguration.Should().Throw<InvalidOperationException>().WithMessage("*Configure Foundry*");
         var missingInstructions = () => factory.Create("");

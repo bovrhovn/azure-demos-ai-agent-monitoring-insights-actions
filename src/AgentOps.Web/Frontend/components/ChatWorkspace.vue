@@ -16,12 +16,14 @@ const hasOlder = ref(false);
 const draft = ref("");
 const loading = ref(false);
 const sending = ref(false);
+const deleting = ref(false);
 const error = ref("");
 const copied = ref(null);
 const timeline = ref(null);
 const composer = ref(null);
-const busy = computed(() => loading.value || sending.value);
-const title = computed(() => sessions.value.find(session => session.id === selected.value)?.title ?? "Your next conversation");
+const busy = computed(() => loading.value || sending.value || deleting.value);
+const currentSession = computed(() => sessions.value.find(session => session.id === selected.value));
+const title = computed(() => currentSession.value?.title ?? "Your next conversation");
 const formatTime = value => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 const messagesUrl = () => `${props.endpoint}/${encodeURIComponent(selected.value)}/messages`;
 
@@ -34,11 +36,18 @@ async function request(url, method = "GET", body) {
     if (!response.ok) {
         if (response.status === 401 || response.status === 403)
             throw new Error("Your session expired or access was denied. Reload the page to sign in.");
-        if (response.status === 409) throw new Error("A reply is already in progress. Wait, then refresh this conversation.");
+        if (response.status === 409) throw new Error("This conversation has an operation in progress or is being deleted. Wait, then refresh it.");
         if (response.status === 429) throw new Error("Too many requests. Wait a minute before trying again.");
+        if (response.headers.get("content-type")?.includes("application/problem+json")) {
+            const problem = await response.json();
+            const configuration = response.status === 503 && problem.title === "Foundry is not configured.";
+            const detail = configuration ? problem.detail : "The conversation could not be updated.";
+            const trace = problem.traceId ? ` Reference: ${problem.traceId}.` : "";
+            throw new Error(`${detail} (HTTP ${response.status}).${trace} Refresh to check saved messages before sending again.`);
+        }
         throw new Error(`The conversation could not be updated (HTTP ${response.status}). Refresh to check saved messages before sending again.`);
     }
-    return response.json();
+    return response.status === 204 ? null : response.json();
 }
 
 async function scrollToLatest() {
@@ -73,8 +82,14 @@ async function refresh(more = false) {
     error.value = "";
     try {
         await readSessions(more);
-        if (!selected.value && sessions.value.length) selected.value = sessions.value[0].id;
-        if (selected.value && !more) await readMessages();
+        if (!more) {
+            if (!currentSession.value) selected.value = sessions.value[0]?.id ?? null;
+            if (selected.value && !currentSession.value?.isDeleting) await readMessages();
+            else {
+                messages.value = [];
+                hasOlder.value = false;
+            }
+        }
     } catch (failure) { error.value = failure.message; }
     finally { loading.value = false; }
 }
@@ -87,7 +102,7 @@ async function select(session) {
     messages.value = [];
     hasOlder.value = false;
     draft.value = "";
-    try { await readMessages(); }
+    try { if (!session.isDeleting) await readMessages(); }
     catch (failure) { error.value = failure.message; }
     finally { loading.value = false; }
 }
@@ -120,8 +135,30 @@ async function olderMessages() {
     finally { loading.value = false; }
 }
 
+async function deleteSession() {
+    if (busy.value || !selected.value || !props.canSend) return;
+    if (!window.confirm("Delete this session and all its messages? This cannot be undone.")) return;
+    deleting.value = true;
+    error.value = "";
+    try {
+        await request(`${props.endpoint}/${encodeURIComponent(selected.value)}`, "DELETE");
+        sessions.value = sessions.value.filter(session => session.id !== selected.value);
+        selected.value = null;
+        messages.value = [];
+        hasOlder.value = false;
+        draft.value = "";
+        await readSessions();
+        selected.value = sessions.value[0]?.id ?? null;
+        if (selected.value && !currentSession.value?.isDeleting) await readMessages();
+    } catch (failure) {
+        error.value = failure.message;
+        try { await readSessions(); }
+        catch (refreshFailure) { error.value += ` ${refreshFailure.message}`; }
+    } finally { deleting.value = false; }
+}
+
 async function send() {
-    if (busy.value || !selected.value || !draft.value.trim() || !props.canSend) return;
+    if (busy.value || !selected.value || currentSession.value?.isDeleting || !draft.value.trim() || !props.canSend) return;
     sending.value = true;
     error.value = "";
     try {
@@ -172,6 +209,7 @@ onMounted(() => refresh());
                         :class="{ selected: selected === session.id }" :aria-current="selected === session.id ? 'true' : undefined"
                         :disabled="busy" @click="select(session)">
                     <strong>{{ session.title }}</strong><time :datetime="session.updatedAt">{{ formatTime(session.updatedAt) }}</time>
+                    <span v-if="session.isDeleting" class="chat-deletion-label">Deletion pending</span>
                 </button>
                 <p v-if="!sessions.length" class="chat-sidebar-empty">{{ loading ? "Loading conversations..." : "A fresh start. Your conversations will appear here." }}</p>
                 <button v-if="continuation" type="button" class="chat-load-more" :disabled="busy" @click="refresh(true)">More sessions</button>
@@ -181,7 +219,12 @@ onMounted(() => refresh());
         <section class="chat-conversation" aria-labelledby="conversation-title" :aria-busy="busy">
             <header class="chat-conversation-heading">
                 <div><span class="eyebrow">AGENT / CHAT</span><h2 id="conversation-title">{{ title }}</h2></div>
-                <span class="chat-context-label">Context-aware</span>
+                <div class="chat-heading-actions">
+                    <span class="chat-context-label">Context-aware</span>
+                    <button v-if="selected && canSend" type="button" class="chat-delete" :disabled="busy" @click="deleteSession()">
+                        {{ deleting ? "Deleting..." : currentSession?.isDeleting ? "Retry deletion" : "Delete session" }}
+                    </button>
+                </div>
             </header>
             <div ref="timeline" class="chat-timeline" role="region" aria-label="Message timeline" tabindex="0">
                 <button v-if="hasOlder" type="button" class="chat-load-more" :disabled="busy" @click="olderMessages()">Load earlier messages</button>
@@ -204,14 +247,14 @@ onMounted(() => refresh());
                     </div>
                 </article>
             </div>
-            <p class="chat-activity" role="status" aria-live="polite">{{ sending ? "Agent is thinking. Your reply will appear here..." : loading ? "Loading conversation..." : "" }}</p>
+            <p class="chat-activity" role="status" aria-live="polite">{{ deleting ? "Deleting session and saved messages..." : sending ? "Agent is thinking. Your reply will appear here..." : currentSession?.isDeleting ? "Deletion is pending. Retry deletion to finish removing this conversation." : loading ? "Loading conversation..." : "" }}</p>
             <form class="chat-composer" @submit.prevent="send">
                 <label for="chat-prompt">Message your agent</label>
                 <div class="chat-input-row">
                     <textarea id="chat-prompt" ref="composer" v-model="draft" rows="2" :maxlength="maxLength"
-                              :disabled="!selected || busy || !canSend" placeholder="What would you like to explore?"
+                              :disabled="!selected || busy || currentSession?.isDeleting || !canSend" placeholder="What would you like to explore?"
                               aria-describedby="chat-input-hint" @keydown="keydown"></textarea>
-                    <button class="chat-send" type="submit" :disabled="!selected || busy || !draft.trim() || !canSend">
+                    <button class="chat-send" type="submit" :disabled="!selected || busy || currentSession?.isDeleting || !draft.trim() || !canSend">
                         {{ sending ? "Sending..." : "Send" }} <span aria-hidden="true">&#8599;</span>
                     </button>
                 </div>

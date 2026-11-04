@@ -18,7 +18,7 @@ public static class ChatEndpoints
             var http = context.HttpContext;
             if (http.User.FindFirstValue("oid") is null && http.User.FindFirstValue(ClaimTypes.NameIdentifier) is null)
                 return Results.Forbid();
-            if (HttpMethods.IsPost(http.Request.Method))
+            if (HttpMethods.IsPost(http.Request.Method) || HttpMethods.IsDelete(http.Request.Method))
             {
                 try { await http.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(http); }
                 catch (AntiforgeryValidationException) { return Results.BadRequest(new { title = "Reload the page before sending a message." }); }
@@ -30,12 +30,26 @@ public static class ChatEndpoints
         group.MapPost("", async (HttpContext http, ChatService chat) =>
             Results.Ok(await chat.CreateAsync(Owner(http.User), http.RequestAborted)))
             .RequireAuthorization(Policies.Operate).RequireRateLimiting("chat");
+        group.MapDelete("/{sessionId}", async (string sessionId, HttpContext http, ChatService chat) =>
+        {
+            try
+            {
+                return await chat.DeleteAsync(Owner(http.User), sessionId, http.RequestAborted)
+                    ? Results.NoContent() : Results.NotFound();
+            }
+            catch (ChatBusyException)
+            {
+                return Results.Conflict(new { title = "This conversation already has an operation in progress. Please wait." });
+            }
+        }).RequireAuthorization(Policies.Operate).RequireRateLimiting("chat");
         group.MapGet("/{sessionId}/messages", async (string sessionId, int? before, HttpContext http,
             IChatStore store, IOptions<ChatOptions> options) =>
         {
             if (before is <= 0) return Results.BadRequest();
             var owner = Owner(http.User);
-            if (await store.GetAsync(owner, sessionId, http.RequestAborted) is null) return Results.NotFound();
+            var session = await store.GetAsync(owner, sessionId, http.RequestAborted);
+            if (session is null) return Results.NotFound();
+            if (session.IsDeleting) return Results.Conflict(new { title = "This conversation is being deleted." });
             return Results.Ok(await store.MessagesAsync(owner, sessionId, options.Value.MessagePageSize, before, http.RequestAborted));
         });
         group.MapPost("/{sessionId}/messages", async (string sessionId, SendMessage input, HttpContext http,
@@ -50,7 +64,7 @@ public static class ChatEndpoints
             }
             catch (ChatBusyException)
             {
-                return Results.Conflict(new { title = "This conversation is already receiving a reply. Please wait." });
+                return Results.Conflict(new { title = "This conversation already has an operation in progress or is being deleted. Please wait." });
             }
         }).RequireAuthorization(Policies.Operate).RequireRateLimiting("chat");
         return endpoints;

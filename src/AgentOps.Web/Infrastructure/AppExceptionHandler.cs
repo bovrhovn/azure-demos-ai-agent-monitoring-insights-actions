@@ -1,3 +1,4 @@
+using AgentOps.Web.Features.Agent;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace AgentOps.Web.Infrastructure;
@@ -8,8 +9,12 @@ public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IPr
     public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken cancellationToken)
     {
         logger.LogError(exception, "Request failed with trace {TraceId}", context.TraceIdentifier);
-        var status = exception is BadHttpRequestException badRequest
-            ? badRequest.StatusCode : StatusCodes.Status500InternalServerError;
+        var status = exception switch
+        {
+            BadHttpRequestException badRequest => badRequest.StatusCode,
+            FoundryConfigurationException => StatusCodes.Status503ServiceUnavailable,
+            _ => StatusCodes.Status500InternalServerError
+        };
         context.Response.StatusCode = status;
         return await problems.TryWriteAsync(new ProblemDetailsContext
         {
@@ -17,7 +22,13 @@ public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IPr
             ProblemDetails = new()
             {
                 Status = status,
-                Title = exception is BadHttpRequestException ? "The request was not valid." : "The operation could not be completed.",
+                Title = exception switch
+                {
+                    BadHttpRequestException => "The request was not valid.",
+                    FoundryConfigurationException => "Foundry is not configured.",
+                    _ => "The operation could not be completed."
+                },
+                Detail = exception is FoundryConfigurationException ? exception.Message : null,
                 Extensions = { ["traceId"] = context.TraceIdentifier }
             }
         });

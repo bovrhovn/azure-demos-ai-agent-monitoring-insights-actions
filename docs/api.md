@@ -14,6 +14,7 @@ All application pages and hubs require a reader or operator application role. Ex
 | GET | `/Chat/Index` | Reader/operator; private conversation workspace |
 | GET | `/ui/chat/sessions?continuationToken=...` | Reader/operator; own sessions and next Cosmos continuation token |
 | POST | `/ui/chat/sessions` | Operator cookie session + antiforgery token; create a conversation |
+| DELETE | `/ui/chat/sessions/{id}` | Operator cookie session + antiforgery token; delete own session and all its messages; returns 204 |
 | GET | `/ui/chat/sessions/{id}/messages?before=...` | Reader/operator; own messages before a sequence number, oldest first within the page |
 | POST | `/ui/chat/sessions/{id}/messages` | Operator cookie session + antiforgery token; save prompt, invoke model with history, save reply |
 | POST | `/api/executions` | API bearer token with operator role or exact delegated `Agent.Run` scope |
@@ -49,6 +50,13 @@ Session pages return `{ items, continuationToken }`; message pages return
 `{ items, hasMore }`. All chat access is restricted to the authenticated owner;
 another user's session ID returns 404. A concurrent send to the same conversation
 returns 409; invalid prompts return 400 and rate-limited writes return 429.
+
+Session deletion requires confirmation in the UI and is blocked while that
+conversation has an in-flight reply. Cosmos cleanup runs in bounded batches.
+Interrupted cleanup leaves `isDeleting: true` on the session; new messages are
+blocked and the UI offers **Retry deletion**. The session document is removed
+only after all its messages have been deleted. Deleting a missing or another
+user's session returns 404.
 
 ## Invoke the agent scaffold
 

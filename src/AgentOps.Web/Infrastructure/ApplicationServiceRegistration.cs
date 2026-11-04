@@ -16,8 +16,16 @@ public static class ApplicationServiceRegistration
 {
     public static IServiceCollection AddAgentOpsServices(this IServiceCollection services, IHostEnvironment environment)
     {
-        services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddSingleton<TokenCredential, DefaultAzureCredential>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<TokenCredential>(provider =>
+        {
+            if (!environment.IsProduction())
+                return new DefaultAzureCredential();
+            var clientId = provider.GetRequiredService<IConfiguration>()["AZURE_CLIENT_ID"];
+            return new ManagedIdentityCredential(string.IsNullOrWhiteSpace(clientId)
+                ? ManagedIdentityId.SystemAssigned
+                : ManagedIdentityId.FromUserAssignedClientId(clientId));
+        });
         services.AddSingleton(provider =>
         {
             var settings = provider.GetRequiredService<IOptions<CosmosOptions>>().Value;
@@ -41,7 +49,7 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IAgentRunner, PendingAgentRunner>();
         services.AddSingleton<IFoundryAgentFactory, FoundryAgentFactory>();
         services.AddSingleton<IChatStore, CosmosChatStore>();
-        services.AddSingleton<IChatAgent, FoundryChatAgent>();
+        services.AddSingleton<IChatAgent, BasicFoundryAgentRunner>();
         services.AddSingleton<ChatService>();
         services.AddSingleton(provider => new LogsQueryClient(provider.GetRequiredService<TokenCredential>()));
         services.AddScoped<IInsightsReader, InsightsReader>();
