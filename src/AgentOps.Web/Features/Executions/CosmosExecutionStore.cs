@@ -19,8 +19,7 @@ public sealed class CosmosExecutionStore(CosmosClient client, IOptions<CosmosOpt
     public async Task<IReadOnlyList<ExecutionRecord>> ListAsync(string trigger, int limit, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
-        var query = new QueryDefinition("SELECT TOP @limit * FROM c WHERE c.trigger = @trigger ORDER BY c.startedAt DESC")
-            .WithParameter("@limit", limit).WithParameter("@trigger", trigger);
+        var query = ExecutionQueries.History(trigger, limit);
         using var iterator = container.GetItemQueryIterator<ExecutionRecord>(query,
             requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(trigger), MaxItemCount = limit });
         List<ExecutionRecord> records = [];

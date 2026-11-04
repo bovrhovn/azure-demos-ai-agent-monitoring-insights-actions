@@ -22,17 +22,3 @@ public static class ExecutionContract
     public const string Canceled = "Canceled";
     public const string ChangedEvent = "ExecutionChanged";
 }
-
-/// <summary>Durable history abstraction. Implementations must surface write failures.</summary>
-public interface IExecutionStore
-{
-    Task SaveAsync(ExecutionRecord execution, CancellationToken cancellationToken);
-    Task<IReadOnlyList<ExecutionRecord>> ListAsync(string trigger, int limit, CancellationToken cancellationToken);
-    Task<ExecutionRecord?> GetAsync(string id, string trigger, CancellationToken cancellationToken);
-}
-
-/// <summary>Live notifications are separate from durable history and telemetry.</summary>
-public interface IExecutionNotifier
-{
-    Task PublishAsync(ExecutionRecord execution, CancellationToken cancellationToken);
-}

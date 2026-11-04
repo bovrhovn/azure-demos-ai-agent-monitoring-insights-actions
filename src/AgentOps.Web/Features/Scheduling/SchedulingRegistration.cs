@@ -1,18 +1,8 @@
-using System.ComponentModel.DataAnnotations;
 using Cronos;
 using Hangfire;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Web.Features.Scheduling;
-
-/// <summary>Validated recurring UTC execution settings, reapplied on each startup.</summary>
-public sealed class SchedulingOptions
-{
-    public const string Section = "Scheduling";
-    public bool Enabled { get; set; } = true;
-    [Required] public string RecurringJobId { get; set; } = "insights-agent";
-    [Required] public string Cron { get; set; } = "*/15 * * * *";
-}
 
 public static class SchedulingRegistration
 {

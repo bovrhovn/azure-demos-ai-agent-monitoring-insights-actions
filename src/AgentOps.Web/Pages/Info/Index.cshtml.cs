@@ -10,5 +10,9 @@ public sealed class IndexModel(IInsightsReader reader, IOptions<InsightsOptions>
     public InsightsOverview? Overview { get; private set; }
     public int LookbackMinutes => settings.Value.LookbackMinutes;
     public Task OnGetAsync(CancellationToken cancellationToken) =>
-        LoadAsync(async () => Overview = await Reader.OverviewAsync(cancellationToken));
+        LoadAsync(async () =>
+        {
+            Overview = await Reader.OverviewAsync(cancellationToken);
+            logger.LogInformation("Overview page loaded with lookback {LookbackMinutes} minutes", LookbackMinutes);
+        });
 }

@@ -13,7 +13,10 @@ public abstract class InsightsPageModel(IInsightsReader reader, ILogger logger) 
     protected async Task LoadAsync(Func<Task> query)
     {
         if (!Configured)
+        {
+            logger.LogInformation("Application Insights query skipped because telemetry is not configured");
             return;
+        }
         try
         {
             await query();

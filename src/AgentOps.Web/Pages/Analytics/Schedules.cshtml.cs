@@ -8,7 +8,7 @@ using Hangfire.Storage;
 
 namespace AgentOps.Web.Pages.Analytics;
 
-public sealed class SchedulesModel(JobStorage storage, IExecutionStore store,
+public sealed class SchedulesModel(JobStorage storage, ILogger<SchedulesModel> logger, IExecutionStore store,
     IOptions<ExecutionOptions> executions, IOptions<SchedulingOptions> options) : PageModel
 {
     public int HistoryLimit => executions.Value.HistoryLimit;
@@ -21,5 +21,8 @@ public sealed class SchedulesModel(JobStorage storage, IExecutionStore store,
         using var connection = storage.GetConnection();
         Schedule = connection.GetRecurringJobs().SingleOrDefault(job => job.Id == Settings.RecurringJobId);
         Executions = await store.ListAsync(ExecutionContract.Schedule, executions.Value.HistoryLimit, cancellationToken);
+        logger.LogInformation(
+            "Schedules page loaded for {RecurringJobId}; enabled {Enabled}, registered {ScheduleFound}, {ExecutionCount} executions with limit {HistoryLimit}",
+            Settings.RecurringJobId, Settings.Enabled, Schedule is not null, Executions.Count, HistoryLimit);
     }
 }

@@ -27,11 +27,13 @@ public static class ExecutionEndpoints
     public static IEndpointRouteBuilder MapExecutionEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet(RouteConstants.ExecutionHistory, async (string trigger, IExecutionStore store,
-            IOptions<ExecutionOptions> options, CancellationToken cancellationToken) =>
+            IOptions<ExecutionOptions> options, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
         {
             if (trigger is not (ExecutionContract.Endpoint or ExecutionContract.Schedule))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["trigger"] = ["Use Endpoint or Schedule."] });
-            return Results.Ok(await store.ListAsync(trigger, options.Value.HistoryLimit, cancellationToken));
+            var records = await store.ListAsync(trigger, options.Value.HistoryLimit, cancellationToken);
+            LogHistory(loggerFactory, trigger, records.Count, options.Value.HistoryLimit);
+            return Results.Ok(records);
         }).RequireAuthorization(Policies.View);
         var api = endpoints.MapGroup(RouteConstants.ExecutionApi).RequireAuthorization(Policies.RunApi);
         api.MapPost(RouteConstants.Root, async (ExecuteAgent handler, ClaimsPrincipal user, CancellationToken cancellationToken) =>
@@ -42,13 +44,25 @@ public static class ExecutionEndpoints
             var result = await handler.RunAsync(ExecutionContract.Endpoint, caller, cancellationToken);
             return Results.Ok(result);
         }).RequireRateLimiting("executions");
-        api.MapGet(RouteConstants.Root, async (IExecutionStore store, IOptions<ExecutionOptions> options, CancellationToken cancellationToken) =>
-            Results.Ok(await store.ListAsync(ExecutionContract.Endpoint, options.Value.HistoryLimit, cancellationToken)));
-        api.MapGet(RouteConstants.ExecutionById, async (string id, IExecutionStore store, CancellationToken cancellationToken) =>
+        api.MapGet(RouteConstants.Root, async (IExecutionStore store, IOptions<ExecutionOptions> options,
+            ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+        {
+            var records = await store.ListAsync(ExecutionContract.Endpoint, options.Value.HistoryLimit, cancellationToken);
+            LogHistory(loggerFactory, ExecutionContract.Endpoint, records.Count, options.Value.HistoryLimit);
+            return Results.Ok(records);
+        });
+        api.MapGet(RouteConstants.ExecutionById, async (string id, IExecutionStore store,
+            ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
         {
             var execution = await store.GetAsync(id, ExecutionContract.Endpoint, cancellationToken);
+            loggerFactory.CreateLogger(typeof(ExecutionEndpoints)).LogInformation(
+                "Execution lookup completed for {Trigger}; found {ExecutionFound}", ExecutionContract.Endpoint, execution is not null);
             return execution is null ? Results.NotFound() : Results.Ok(execution);
         });
         return endpoints;
     }
+
+    private static void LogHistory(ILoggerFactory loggerFactory, string trigger, int count, int limit) =>
+        loggerFactory.CreateLogger(typeof(ExecutionEndpoints)).LogInformation(
+            "Execution history loaded for {Trigger} with {ExecutionCount} executions and limit {HistoryLimit}", trigger, count, limit);
 }
