@@ -170,6 +170,17 @@ public sealed class TelemetryToolTests
     }
 
     [TestMethod]
+    [DataRow("Authorization: Bearer header-token", "header-token")]
+    [DataRow("Authorization=Basic YmFzZTY0", "YmFzZTY0")]
+    [DataRow("""{"password":"secret containing spaces"}""", "secret containing spaces")]
+    public async Task RedactionRemovesWholeAuthorizationValuesAndQuotedSecrets(string message, string sensitive)
+    {
+        var result = await Tools(Query([ExceptionRow with { Summary = message }]).Object).GetRecentExceptions();
+        result.Rows.Should().ContainSingle();
+        result.Rows[0].Summary.Should().Contain("REDACTED").And.NotContain(sensitive);
+    }
+
+    [TestMethod]
     [DataRow(403, "access_denied")]
     [DataRow(500, "query_failed")]
     public async Task AzureErrorsAreExplicitAndDoNotLeakProviderDetails(int status, string expected)

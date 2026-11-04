@@ -7,8 +7,8 @@ internal static partial class TelemetryText
     public static string Sanitize(string value)
     {
         value = ConnectionString().Replace(value, "[REDACTED CONNECTION STRING]");
+        value = AuthorizationScheme().Replace(value, "[REDACTED AUTHORIZATION]");
         value = Secret().Replace(value, "$1=[REDACTED]");
-        value = Bearer().Replace(value, "Bearer [REDACTED]");
         value = Jwt().Replace(value, "[REDACTED TOKEN]");
         value = Email().Replace(value, "[REDACTED EMAIL]");
         return UrlQuery().Replace(value, "$1?[REDACTED]");
@@ -16,10 +16,10 @@ internal static partial class TelemetryText
 
     [GeneratedRegex(@"(?i)(?:InstrumentationKey|AccountEndpoint|Server|Data Source|Host)\s*=\s*[^;\r\n""<>]+(?:;[^;\r\n""<>]*=[^;\r\n""<>]*)*;?", RegexOptions.NonBacktracking)]
     private static partial Regex ConnectionString();
-    [GeneratedRegex(@"(?i)\b(password|pwd|accountkey|apikey|api[_-]key|client[_-]?secret|access[_-]?token|authorization|sig)\b[""']?\s*[:=]\s*[""']?[^""'\s,;}\]]+", RegexOptions.NonBacktracking)]
+    [GeneratedRegex(@"(?i)\b(password|pwd|accountkey|apikey|api[_-]key|client[_-]?secret|access[_-]?token|authorization|sig)\b[""']?\s*[:=]\s*(?:""[^""\r\n]*""|'[^'\r\n]*'|[^""'\s,;}\]]+)", RegexOptions.NonBacktracking)]
     private static partial Regex Secret();
-    [GeneratedRegex(@"(?i)\bBearer\s+[A-Za-z0-9._~+/\-=]+", RegexOptions.NonBacktracking)]
-    private static partial Regex Bearer();
+    [GeneratedRegex(@"(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/\-=]+", RegexOptions.NonBacktracking)]
+    private static partial Regex AuthorizationScheme();
     [GeneratedRegex(@"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", RegexOptions.NonBacktracking)]
     private static partial Regex Jwt();
     [GeneratedRegex(@"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", RegexOptions.NonBacktracking)]
