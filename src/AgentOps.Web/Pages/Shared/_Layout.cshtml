@@ -21,8 +21,23 @@
         <div class="masthead">
             <a class="brand" href="@Url.Content($"~{RouteConstants.Root}")"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Agent Observatory</span></a>
             <span class="brand-divider" aria-hidden="true"></span><span class="masthead-caption">Developer operations</span>
-            <div class="account"><span>@(User.Identity?.Name ?? "Authenticated operator")</span>
-                <a asp-area="MicrosoftIdentity" asp-controller="Account" asp-action="SignOut">Sign out &#8599;</a>
+            <div class="header-context">
+                <div class="data-source" data-environment="@DataSource.EnvironmentName" aria-label="Execution data source">
+                    <span class="data-source-icon" aria-hidden="true">
+                        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7">
+                            <ellipse cx="16" cy="8" rx="10" ry="4" />
+                            <path d="M6 8v16c0 2.2 4.5 4 10 4s10-1.8 10-4V8M6 16c0 2.2 4.5 4 10 4s10-1.8 10-4" />
+                        </svg>
+                    </span>
+                    <div class="data-source-copy">
+                        <span class="data-source-label">EXECUTION DATA SOURCE</span>
+                        <strong>@DataSource.Label <span class="data-source-service">@DataSource.ServiceName</span></strong>
+                        <span class="data-source-location">@DataSource.Database <span aria-hidden="true">/</span> @DataSource.Container</span>
+                    </div>
+                </div>
+                <div class="account"><span>@(User.Identity?.Name ?? "Authenticated operator")</span>
+                    <a asp-area="MicrosoftIdentity" asp-controller="Account" asp-action="SignOut">Sign out &#8599;</a>
+                </div>
             </div>
         </div>
         <div class="navigation-bar">
@@ -42,19 +57,6 @@
         <main id="main" tabindex="-1">@RenderBody()</main>
         <footer>
             <div><a class="footer-brand" href="@Url.Content($"~{RouteConstants.Root}")">Agent Observatory</a><span class="footer-caption">Razor Pages &middot; Vue.js &middot; Minimal APIs</span></div>
-            <div class="data-source" data-environment="@DataSource.EnvironmentName" aria-label="Execution data source">
-                <span class="data-source-icon" aria-hidden="true">
-                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7">
-                        <ellipse cx="16" cy="8" rx="10" ry="4" />
-                        <path d="M6 8v16c0 2.2 4.5 4 10 4s10-1.8 10-4V8M6 16c0 2.2 4.5 4 10 4s10-1.8 10-4" />
-                    </svg>
-                </span>
-                <div class="data-source-copy">
-                    <span class="data-source-label">EXECUTION DATA SOURCE</span>
-                    <strong>@DataSource.Label <span class="data-source-service">@DataSource.ServiceName</span></strong>
-                    <span class="data-source-location">@DataSource.Database <span aria-hidden="true">/</span> @DataSource.Container</span>
-                </div>
-            </div>
         </footer>
     </div>
     @await RenderSectionAsync("Scripts", required: false)

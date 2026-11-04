@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from "vue";
+import AgentMessage from "./AgentMessage.vue";
 
 const props = defineProps({
     endpoint: { type: String, required: true },
@@ -40,8 +41,9 @@ async function request(url, method = "GET", body) {
         if (response.status === 429) throw new Error("Too many requests. Wait a minute before trying again.");
         if (response.headers.get("content-type")?.includes("application/problem+json")) {
             const problem = await response.json();
-            const configuration = response.status === 503 && problem.title === "Foundry is not configured.";
-            const detail = configuration ? problem.detail : "The conversation could not be updated.";
+            const actionable = response.status === 503 &&
+                ["Foundry is not configured.", "Foundry is temporarily rate limited."].includes(problem.title);
+            const detail = actionable ? problem.detail : "The conversation could not be updated.";
             const trace = problem.traceId ? ` Reference: ${problem.traceId}.` : "";
             throw new Error(`${detail} (HTTP ${response.status}).${trace} Refresh to check saved messages before sending again.`);
         }
@@ -238,7 +240,10 @@ onMounted(() => refresh());
                          :aria-label="message.role === 'user' ? 'User prompt' : 'Agent response'">
                     <div class="chat-message-meta"><strong>{{ message.role === "user" ? "You" : "Agent" }}</strong>
                         <time :datetime="message.timestamp">{{ formatTime(message.timestamp) }}</time></div>
-                    <div class="chat-bubble">{{ message.content }}</div>
+                    <div class="chat-bubble" :class="{ 'chat-bubble-rich': message.role === 'agent' }">
+                        <AgentMessage v-if="message.role === 'agent'" :content="message.content" />
+                        <template v-else>{{ message.content }}</template>
+                    </div>
                     <div v-if="message.role === 'agent'" class="chat-message-footer">
                         <span class="chat-model">Model: {{ message.model }}</span>
                         <button type="button" class="chat-copy" :aria-label="copied === message.id ? 'Message copied' : 'Copy agent message'" @click="copy(message)">

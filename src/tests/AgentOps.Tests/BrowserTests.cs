@@ -58,6 +58,12 @@ public sealed class BrowserTests
         await page.GotoAsync(address + "/");
         await Assertions.Expect(page.Locator(".data-source")).ToContainTextAsync("Cosmos development");
         await Assertions.Expect(page.Locator(".data-source-service")).ToHaveTextAsync("Local emulator");
+        await Assertions.Expect(page.Locator("header .header-context > .data-source")).ToHaveCountAsync(1);
+        await Assertions.Expect(page.Locator("footer .data-source")).ToHaveCountAsync(0);
+        var sourceBounds = (await page.Locator(".data-source").BoundingBoxAsync())!;
+        var accountBounds = (await page.Locator(".account").BoundingBoxAsync())!;
+        (sourceBounds.X + sourceBounds.Width).Should().BeLessThanOrEqualTo(accountBounds.X,
+            "the source badge should sit beside the account without overlap");
         await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Level = 1 })).ToContainTextAsync("A clearer view.");
         await Assertions.Expect(page.Locator(".metric").First).ToContainTextAsync("42");
         await page.GetByRole(AriaRole.Navigation, new() { Name = "Primary navigation" })
@@ -103,6 +109,8 @@ public sealed class BrowserTests
         await Assertions.Expect(row).ToContainTextAsync("[recovered from history]");
         await Assertions.Expect(row.Locator("img")).ToHaveCountAsync(0);
         await page.SetViewportSizeAsync(390, 844);
+        await Assertions.Expect(page.Locator("header .data-source")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator(".account > span")).ToBeVisibleAsync();
         var overflow = await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > window.innerWidth");
         overflow.Should().BeFalse("horizontal scrolling must be contained inside the history table, not the page");
         await page.GotoAsync(address + RouteConstants.SchedulesPage);

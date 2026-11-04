@@ -1,10 +1,12 @@
 using System.Net;
+using System.ClientModel;
 using System.Net.Http.Json;
 using AgentOps.Web;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using FluentAssertions;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -14,7 +16,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
-using ChatOptions = AgentOps.Web.Infrastructure.ChatOptions;
+using ChatOptions = AgentOps.Web.Infrastructure.Options.ChatOptions;
 using ModelMessage = Microsoft.Extensions.AI.ChatMessage;
 
 namespace AgentOps.Tests;
@@ -64,6 +66,44 @@ public sealed class BasicFoundryAgentRunnerTests
         calls.Last().Select(message => message.Role).Should().Equal(ChatRole.User, ChatRole.Assistant, ChatRole.User);
         calls.Last().Select(message => message.Text).Should().Equal("Remember teal.", "A real framework reply.", "Which colour?");
         app.ChatAgent.Calls.Should().BeEmpty("chat must use the registered framework runner, not the test-host fake");
+    }
+
+    [TestMethod]
+    [DataRow(429, HttpStatusCode.ServiceUnavailable)]
+    [DataRow(500, HttpStatusCode.InternalServerError)]
+    public async Task UpstreamRateLimitIsActionableWithoutLeakingProviderDetailsOrLosingThePrompt(int upstreamStatus, HttpStatusCode expected)
+    {
+        var client = new Mock<IChatClient>();
+        client.Setup(chat => chat.GetResponseAsync(It.IsAny<IEnumerable<ModelMessage>>(),
+                It.IsAny<Microsoft.Extensions.AI.ChatOptions>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ClientResultException("private provider detail",
+                Mock.Of<System.ClientModel.Primitives.PipelineResponse>(response => response.Status == upstreamStatus)));
+        var factory = new Mock<IFoundryAgentFactory>();
+        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>())).Returns(new ChatClientAgent(client.Object));
+        await using var app = new AppFactory();
+        await using var host = app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IChatAgent>();
+            services.AddSingleton<IChatAgent, BasicFoundryAgentRunner>();
+            services.RemoveAll<IFoundryAgentFactory>();
+            services.AddSingleton(factory.Object);
+        }));
+        using var http = host.CreateClient();
+        http.DefaultRequestHeaders.Add("X-Test-Role", "AgentOps.Operator");
+        await ChatTests.AuthorizePosts(http);
+        var created = await http.PostAsync(RouteConstants.ChatSessions, null);
+        created.EnsureSuccessStatusCode();
+        var session = (await created.Content.ReadFromJsonAsync<ChatSession>())!;
+        var response = await http.PostAsJsonAsync($"{RouteConstants.ChatSessions}/{session.Id}/messages", new { content = "Saved before throttling" });
+        response.StatusCode.Should().Be(expected);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().NotContain("private provider detail");
+        if (upstreamStatus == 429)
+            body.Should().Contain("Foundry is temporarily rate limited.").And.Contain("Foundry:ModelDeployment");
+        else body.Should().NotContain("temporarily rate limited");
+        app.Chats.Messages.Should().ContainSingle().Which.Content.Should().Be("Saved before throttling");
+        client.Verify(chat => chat.GetResponseAsync(It.IsAny<IEnumerable<ModelMessage>>(),
+            It.IsAny<Microsoft.Extensions.AI.ChatOptions>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [TestMethod]

@@ -12,7 +12,7 @@ public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IPr
         var status = exception switch
         {
             BadHttpRequestException badRequest => badRequest.StatusCode,
-            FoundryConfigurationException => StatusCodes.Status503ServiceUnavailable,
+            FoundryConfigurationException or FoundryRateLimitException => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status500InternalServerError
         };
         context.Response.StatusCode = status;
@@ -26,9 +26,10 @@ public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IPr
                 {
                     BadHttpRequestException => "The request was not valid.",
                     FoundryConfigurationException => "Foundry is not configured.",
+                    FoundryRateLimitException => "Foundry is temporarily rate limited.",
                     _ => "The operation could not be completed."
                 },
-                Detail = exception is FoundryConfigurationException ? exception.Message : null,
+                Detail = exception is FoundryConfigurationException or FoundryRateLimitException ? exception.Message : null,
                 Extensions = { ["traceId"] = context.TraceIdentifier }
             }
         });

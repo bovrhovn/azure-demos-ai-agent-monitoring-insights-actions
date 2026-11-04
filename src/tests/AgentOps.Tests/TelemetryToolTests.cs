@@ -3,6 +3,7 @@ using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Azure;
 using Azure.Core;
 using Azure.Monitor.Query.Logs;
@@ -13,7 +14,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using InfrastructureChatOptions = AgentOps.Web.Infrastructure.ChatOptions;
+using InfrastructureChatOptions = AgentOps.Web.Infrastructure.Options.ChatOptions;
 using ModelMessage = Microsoft.Extensions.AI.ChatMessage;
 using StoredMessage = AgentOps.Web.Features.Chat.ChatMessage;
 
@@ -79,7 +80,7 @@ public sealed class TelemetryToolTests
         var query = new Mock<ITelemetryQuery>(MockBehavior.Strict);
         var tools = Tools(query.Object);
         (await tools.GetRecentExceptions(0)).Status.Should().Be("invalid_arguments");
-        (await tools.GetRecentExceptions(1441)).Status.Should().Be("invalid_arguments");
+        (await tools.GetRecentExceptions(10081)).Status.Should().Be("invalid_arguments");
         (await tools.GetRecentTraces(count: 21)).Status.Should().Be("invalid_arguments");
         (await tools.GetRecentTraces(minimumSeverity: 5)).Status.Should().Be("invalid_arguments");
         (await tools.GetRecentTraces(service: "bad\nfilter")).Status.Should().Be("invalid_arguments");
@@ -100,7 +101,7 @@ public sealed class TelemetryToolTests
         foreach (var request in new TelemetryQueryRequest[]
         {
             new(TelemetryQueryKind.Traces, Now.AddMinutes(-30), Now, 21),
-            new(TelemetryQueryKind.Traces, Now.AddMinutes(-1441), Now, 5),
+            new(TelemetryQueryKind.Traces, Now.AddMinutes(-10081), Now, 5),
             new(TelemetryQueryKind.Traces, Now, Now, 5),
             new(TelemetryQueryKind.ExceptionDetails, Now.AddMinutes(-30), Now, 5)
         })
@@ -109,6 +110,29 @@ public sealed class TelemetryToolTests
             await call.Should().ThrowAsync<ArgumentException>();
         }
         client.VerifyNoOtherCalls();
+    }
+
+    [TestMethod]
+    public async Task SevenDayListAndDrillDownUseTheOriginalWeekAndRespectConfiguredLimits()
+    {
+        var query = Query([ExceptionRow]);
+        var tools = Tools(query.Object);
+        var result = await tools.GetRecentExceptions(10080, 3);
+        result.Status.Should().Be("success");
+        result.Start.Should().Be(Now.AddDays(-7));
+        result.End.Should().Be(Now);
+        query.Verify(item => item.QueryAsync(new(TelemetryQueryKind.Exceptions, Now.AddDays(-7), Now, 3),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var followUp = Tools(query.Object, previous: tools.Evidence);
+        (await followUp.GetExceptionDetails(result.Rows[0].Reference)).Status.Should().Be("success");
+        query.Verify(item => item.QueryAsync(It.Is<TelemetryQueryRequest>(request =>
+            request.Kind == TelemetryQueryKind.ExceptionDetails && request.Start == Now.AddDays(-7) && request.End == Now),
+            It.IsAny<CancellationToken>()), Times.Once);
+        var restricted = Tools(query.Object, new InsightsToolOptions { MaxLookbackMinutes = 1440 });
+        var rejected = await restricted.GetRecentExceptions(10080);
+        rejected.Status.Should().Be("invalid_arguments");
+        rejected.Error.Should().Contain("not executed").And.Contain("1440");
+        query.Verify(item => item.QueryAsync(It.IsAny<TelemetryQueryRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [TestMethod]

@@ -1,4 +1,5 @@
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using FluentAssertions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -32,7 +33,7 @@ public sealed class DataSourceTests
     [DataRow("Development", "Cosmos development", "Local emulator")]
     [DataRow("Production", "Cosmos production", "observatory-prod")]
     [DataRow("Staging", "Cosmos staging", "observatory-prod")]
-    public async Task FooterRendersConfiguredSourceWithoutCredentials(string environmentName, string label, string serviceName)
+    public async Task HeaderBesideAccountRendersConfiguredSourceWithoutCredentials(string environmentName, string label, string serviceName)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -49,5 +50,10 @@ public sealed class DataSourceTests
             .And.Contain("aria-label=\"Execution data source\"").And.Contain("data-source-icon")
             .And.NotContain("AccountEndpoint=").And.NotContain("AccountKey=").And.NotContain("dGVzdA==")
             .And.NotContain("test-only-webhook-key");
+        var header = html[html.IndexOf("<header", StringComparison.Ordinal)..html.IndexOf("</header>", StringComparison.Ordinal)];
+        header.Should().Contain("class=\"header-context\"").And.Contain("class=\"data-source\"")
+            .And.Contain("class=\"account\"").And.Contain(label).And.Contain(serviceName);
+        var footer = html[html.IndexOf("<footer>", StringComparison.Ordinal)..html.IndexOf("</footer>", StringComparison.Ordinal)];
+        footer.Should().NotContain("data-source");
     }
 }

@@ -1,13 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 public sealed class InsightsToolOptions
 {
     public const string Section = "InsightsTools";
     public bool Enabled { get; set; } = true;
     [Range(1, 10080)] public int DefaultLookbackMinutes { get; set; } = 60;
-    [Range(1, 10080)] public int MaxLookbackMinutes { get; set; } = 1440;
+    [Range(1, 10080)] public int MaxLookbackMinutes { get; set; } = 10080;
     [Range(1, 100)] public int DefaultCount { get; set; } = 5;
     [Range(1, 100)] public int MaxRows { get; set; } = 20;
     [Range(1, 120)] public int QueryTimeoutSeconds { get; set; } = 30;

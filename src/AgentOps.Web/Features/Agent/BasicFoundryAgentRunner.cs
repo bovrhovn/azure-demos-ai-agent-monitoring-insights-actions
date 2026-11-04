@@ -1,12 +1,14 @@
 using System.Diagnostics;
+using System.ClientModel;
 using System.Text.Json;
 using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
-using ChatOptions = AgentOps.Web.Infrastructure.ChatOptions;
+using ChatOptions = AgentOps.Web.Infrastructure.Options.ChatOptions;
 using ChatMessage = AgentOps.Web.Features.Chat.ChatMessage;
 
 namespace AgentOps.Web.Features.Agent;
@@ -42,7 +44,11 @@ public sealed class BasicFoundryAgentRunner(IFoundryAgentFactory factory, IOptio
             var previous = history.Where(message => message.Role == "agent").SelectMany(message => message.Evidence)
                 .TakeLast(toolOptions.Value.MaxEvidenceReferences).ToArray();
             var tools = new InsightsAgentTools(telemetry, insights.Value, toolOptions.Value, time, previous, logger);
-            var agent = factory.Create(options.Value.Instructions + "\n" + ToolInstructions, tools.CreateTools());
+            var limits = $"\nCurrent telemetry limits: maximum lookback {toolOptions.Value.MaxLookbackMinutes} minutes, " +
+                $"default lookback {toolOptions.Value.DefaultLookbackMinutes} minutes, maximum rows {toolOptions.Value.MaxRows}. " +
+                "Use these current limits even if earlier messages mention smaller limits. A rejected or failed query " +
+                "was not successfully executed; never describe its empty rows as no matching telemetry.";
+            var agent = factory.Create(options.Value.Instructions + "\n" + ToolInstructions + limits, tools.CreateTools());
             List<Microsoft.Extensions.AI.ChatMessage> messages = [];
             foreach (var message in history)
             {
@@ -69,6 +75,12 @@ public sealed class BasicFoundryAgentRunner(IFoundryAgentFactory factory, IOptio
             logger.LogInformation("Foundry model {Model} returned a chat reply in {ElapsedMilliseconds} ms",
                 reply.Model, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return reply;
+        }
+        catch (ClientResultException exception) when (exception.Status == StatusCodes.Status429TooManyRequests)
+        {
+            logger.LogWarning(exception, "Foundry deployment {ModelDeployment} exceeded its request or token quota",
+                foundry.Value.ModelDeployment);
+            throw new FoundryRateLimitException(exception);
         }
         catch (OperationCanceledException exception)
         {

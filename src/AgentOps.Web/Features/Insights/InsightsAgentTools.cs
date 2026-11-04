@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Azure;
 using Microsoft.Extensions.AI;
 
@@ -59,7 +60,7 @@ public sealed class InsightsAgentTools(ITelemetryQuery query, InsightsOptions in
         var end = time.GetUtcNow();
         var minutes = lookbackMinutes ?? options.DefaultLookbackMinutes;
         if (minutes < 1 || minutes > options.MaxLookbackMinutes)
-            return Task.FromResult(Failure("invalid_arguments", $"Lookback must be 1..{options.MaxLookbackMinutes} minutes."));
+            return Task.FromResult(Failure("invalid_arguments", $"Query was not executed. Lookback must be 1..{options.MaxLookbackMinutes} minutes; this is not an empty telemetry result."));
         return ExecuteAsync(new(kind, end.AddMinutes(-minutes), end, count ?? options.DefaultCount,
             Service: service, MinimumSeverity: severity), cancellationToken);
     }
