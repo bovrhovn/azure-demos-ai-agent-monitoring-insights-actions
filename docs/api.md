@@ -11,6 +11,11 @@ All application pages and hubs require a reader or operator application role. Ex
 | GET | `/Analytics/Schedules` | Reader/operator; schedule and scheduled history |
 | GET | `/Analytics/Executions` | Reader/operator; endpoint-only live history |
 | GET | `/Analytics/Logs` | Reader/operator; telemetry traces |
+| GET | `/Chat/Index` | Reader/operator; private conversation workspace |
+| GET | `/ui/chat/sessions?continuationToken=...` | Reader/operator; own sessions and next Cosmos continuation token |
+| POST | `/ui/chat/sessions` | Operator cookie session + antiforgery token; create a conversation |
+| GET | `/ui/chat/sessions/{id}/messages?before=...` | Reader/operator; own messages before a sequence number, oldest first within the page |
+| POST | `/ui/chat/sessions/{id}/messages` | Operator cookie session + antiforgery token; save prompt, invoke model with history, save reply |
 | POST | `/api/executions` | API bearer token with operator role or exact delegated `Agent.Run` scope |
 | GET | `/api/executions` | Same bearer policy; latest endpoint executions |
 | GET | `/api/executions/{id}` | Same bearer policy; endpoint record, or 404 |
@@ -23,7 +28,7 @@ All application pages and hubs require a reader or operator application role. Ex
 | SignalR | `/hubs/executions` | Reader/operator; server-to-client notifications only |
 | GET | `/health` | Anonymous; alias for Cosmos readiness |
 | GET | `/health/live` | Anonymous; process liveness |
-| GET | `/health/ready` | Anonymous; Cosmos execution-history container access |
+| GET | `/health/ready` | Anonymous; Cosmos execution-history and chat container access |
 
 Application-local paths and callback/asset defaults live in `RouteConstants.cs`.
 Health routes execute over internal HTTP without redirecting; public Container
@@ -36,7 +41,14 @@ page contains only a mount point and no server-rendered table or telemetry query
 `LogsPanel.vue` loads, refreshes and pages results through `/ui/analytics/logs`.
 Other pages retain their initial read-only view before Vue mounts. All components
 call the session-only Minimal APIs. No browser bearer token is stored, and these
-read-only endpoints cannot invoke an agent.
+analytics endpoints cannot invoke an agent. The separate chat write endpoints
+accept `{ "content": "Your prompt" }` and require the page's antiforgery token in
+the `RequestVerificationToken` header. They return the saved agent message with
+`role`, `content`, `timestamp`, `sequence`, `sessionId`, `ownerId` and `model`.
+Session pages return `{ items, continuationToken }`; message pages return
+`{ items, hasMore }`. All chat access is restricted to the authenticated owner;
+another user's session ID returns 404. A concurrent send to the same conversation
+returns 409; invalid prompts return 400 and rate-limited writes return 429.
 
 ## Invoke the agent scaffold
 

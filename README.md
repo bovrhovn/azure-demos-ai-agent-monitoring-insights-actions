@@ -2,7 +2,7 @@
 
 An ASP.NET Core **.NET 10 / C# Razor Pages** application for observing Application Insights and tracking Microsoft Foundry agent executions, on a schedule or through an authenticated Minimal API.
 
-**This is an executable infrastructure scaffold.** The agent's instructions, tools, decisions and actions are intentionally TODOs. Runs are recorded as `NotImplemented`; no model is called and no remediation is performed.
+**Automated execution remains an infrastructure scaffold.** Scheduled/API runs are recorded as `NotImplemented`; they do not call a model or perform remediation. The separate **Agent chat** workspace invokes the configured Foundry model for text-only conversations, with no action tools.
 
 ## What is included
 
@@ -12,6 +12,7 @@ An ASP.NET Core **.NET 10 / C# Razor Pages** application for observing Applicati
 | Schedules | UTC recurring schedule, next/last dispatch, and scheduled execution history |
 | Endpoint runs | Separate Cosmos DB history for `POST /api/executions`, updated live through SignalR |
 | Application logs | Separate Application Insights trace viewer; not used as execution storage |
+| Agent chat | Private Cosmos-backed sessions, historical context, model-labelled replies and message copying |
 | Identity | Microsoft Entra ID OIDC for the web app; validated bearer tokens and role/scope authorization for the API |
 | Agent integration | Microsoft Agent Framework + `AIProjectClient` behind `IFoundryAgentFactory`; behavior explicitly deferred |
 | Persistence | Cosmos DB emulator connection string in Development; Cosmos HTTPS endpoint + `DefaultAzureCredential` outside Development |
@@ -71,7 +72,9 @@ The runner starts the native emulator if needed, builds assets and C# from `src`
 .\scripts\run-web.ps1 -SkipEmulatorStart -NoBrowser
 ```
 
-`-SkipEmulatorStart` uses an already running local emulator with your configured `Cosmos:ConnectionString`. Register any alternate HTTPS port as an Entra redirect URI. Development provisions the execution-history container; deployed environments use pre-provisioned Cosmos and managed identity. Hangfire requires no scheduling database.
+`-SkipEmulatorStart` uses an already running local emulator with your configured `Cosmos:ConnectionString`. Register any alternate HTTPS port as an Entra redirect URI. Development creates missing execution-history and chat containers; Bicep provisions them in Azure before app startup. Deployed environments retain managed-identity-only data access. Hangfire requires no scheduling database.
+
+Open **Agent chat** from the menu with an operator account to create a session and send messages. Configure `Foundry:ProjectEndpoint` and `Foundry:ModelDeployment` first; the Azure SDK identity needs access to the Foundry project/model. Sending messages invokes a billable model. Enter sends; Shift+Enter adds a line. Each reply includes its model and a Copy button. The configurable recent history is sent with each prompt; the full saved timeline remains available through earlier-message paging.
 
 Hangfire queues and scheduling state are **volatile** and lost on restart. The configured UTC recurring job is re-registered at startup; missed runs are not recovered across restarts. Failed agent jobs have no automatic retries. Cosmos execution history remains durable. The API still runs synchronously through the same execution handler as the background job. No Hangfire administrative dashboard is exposed.
 
@@ -94,7 +97,7 @@ Browser verification is opt-in; see [testing](docs/testing.md) for Chromium/Edge
 
 Start with [azure/README.md](azure/README.md). `azure\scripts\Deploy-All.ps1` provisions infrastructure, builds/pushes the container in ACR Tasks, deploys the digest-pinned image and waits for readiness. Omit `-AcrName` to create a registry or provide an existing one. Reuse Cosmos with `-CosmosAccountName` and `-CosmosResourceGroup`; private connectivity preserves a shared account's network settings. `Initialize-EntraApplication.ps1` can create a dedicated web/API registration and configure the deployed callbacks. Use `-WhatIf` for a local plan without Azure changes. Normal local development/test scripts never deploy Azure resources.
 
-The Bicep provisions Container Apps, ACR/access, a user-assigned identity, Cosmos DB with local/key authentication disabled and two NoSQL containers, Key Vault, workspace-based Application Insights, and a Foundry account/project. It deploys **GPT-5.5** by default; model, version, SKU, capacity and deployment name are configurable. The application receives the selected deployment name but agent behavior remains deferred, so placeholder runs still make no model calls.
+The Bicep provisions Container Apps, ACR/access, a user-assigned identity, Cosmos DB with local/key authentication disabled and execution/chat NoSQL containers, Key Vault, workspace-based Application Insights, and a Foundry account/project. It deploys **GPT-5.5** by default; model, version, SKU, capacity and deployment name are configurable. Chat uses that deployment; automated placeholder runs still make no model calls.
 
 This demo intentionally stays at **one replica** for in-process SignalR and cookie-key storage. Network isolation, persistent encrypted cookie keys, distributed notifications, idempotent actions, retention and recovery must be designed before a production rollout.
 

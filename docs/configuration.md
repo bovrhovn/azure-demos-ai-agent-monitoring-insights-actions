@@ -51,7 +51,24 @@ Deployments may reuse an existing Cosmos account with `CosmosAccountName`, `Cosm
 
 `usePrivateKeyVault` defaults to `usePrivateCosmos`. Private Key Vault references use their own private endpoint and `privatelink.vaultcore.azure.net` DNS link, with dependency ordering before app creation. Either private-access setting enables the shared VNet infrastructure.
 
-Execution history uses the singleton Cosmos client and `/trigger` partition key. Readiness checks this container even when dispatch is disabled. Hangfire uses process-local memory and requires no connection string or database.
+Execution history uses the singleton Cosmos client and `/trigger` partition key. Chat sessions and messages share a separate container partitioned by `/ownerId`, derived from the authenticated tenant/user identity. Readiness checks both containers even when dispatch is disabled. Development creates missing containers; Azure deployments provision them through Bicep, not elevated runtime permissions. Hangfire uses process-local memory and requires no connection string or database.
+
+## Chat
+
+| Setting | Default / requirement |
+|---|---|
+| `Chat:Container` | `chats`; must differ from `Cosmos:Container`; Bicep parameter `chatContainerName` |
+| `Chat:SessionPageSize` | `30`, range `1..100`; Cosmos continuation-token paging |
+| `Chat:MessagePageSize` | `40`, range `1..100`; latest messages, with earlier-message paging |
+| `Chat:HistoryLimit` | `40`, range `1..100`; previous messages supplied with each new prompt |
+| `Chat:MaxPromptLength` | `8000`, range `1..32000` characters |
+| `Chat:MaxOutputTokens` | `2048`, range `1..16384`; model output bound |
+| `Chat:RequestsPerMinute` | `20`, range `1..120`; session/message writes per authenticated caller |
+| `Chat:TimeoutSeconds` | `120`, range `1..300`; cooperative request/model deadline |
+| `Chat:FinalizationTimeoutSeconds` | `15`, range `1..60`; independent reply-persistence deadline |
+| `Chat:Instructions` | Text-only conversational assistant; no telemetry access, tools or actions |
+
+Operator sessions may create conversations and send messages; readers can only inspect their own existing conversations. A user prompt is saved before the model call. Model failures leave the prompt visible, return a safe error, and never fabricate an agent reply. Successful replies are saved atomically with updated session metadata. Calls in one conversation are serialized in the single application process; the existing one-replica restriction also applies to chat. Model invocations are not automatically retried.
 
 ## Event Grid webhook
 

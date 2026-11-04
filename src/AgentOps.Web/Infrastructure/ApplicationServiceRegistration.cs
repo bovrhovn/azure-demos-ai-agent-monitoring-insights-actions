@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentOps.Web.Features.Agent;
+using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Features.Scheduling;
@@ -39,6 +40,9 @@ public static class ApplicationServiceRegistration
         services.AddScoped<ExecuteAgent>();
         services.AddSingleton<IAgentRunner, PendingAgentRunner>();
         services.AddSingleton<IFoundryAgentFactory, FoundryAgentFactory>();
+        services.AddSingleton<IChatStore, CosmosChatStore>();
+        services.AddSingleton<IChatAgent, FoundryChatAgent>();
+        services.AddSingleton<ChatService>();
         services.AddSingleton(provider => new LogsQueryClient(provider.GetRequiredService<TokenCredential>()));
         services.AddScoped<IInsightsReader, InsightsReader>();
         services.AddSingleton<CosmosDataSource>();

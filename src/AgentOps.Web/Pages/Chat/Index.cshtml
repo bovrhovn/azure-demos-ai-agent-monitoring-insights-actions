@@ -1,0 +1,18 @@
+@page
+@model AgentOps.Web.Pages.Chat.IndexModel
+@{
+    ViewData["Title"] = "Agent chat";
+}
+<div class="page-heading chat-heading">
+    <div><p class="eyebrow">WORKSPACE / CONVERSATIONS</p><h1>A little context.<br /><span>A better conversation.</span></h1></div>
+    <p class="page-intro">Pick up where you left off. Conversations are private to your account and saved in Cosmos DB.</p>
+</div>
+<div data-chat
+     data-endpoint="@Url.Content($"~{RouteConstants.ChatSessions}")"
+     data-token="@Model.AntiforgeryToken"
+     data-can-send="@Model.CanSend.ToString().ToLowerInvariant()"
+     data-max-length="@Model.MaxPromptLength"
+     data-history-limit="@Model.HistoryLimit">
+    <p class="empty-state" role="status">Opening your conversations...</p>
+</div>
+<noscript><div class="notice">Enable JavaScript to open conversations and send messages.</div></noscript>

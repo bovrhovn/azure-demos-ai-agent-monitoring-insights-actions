@@ -15,7 +15,7 @@ public sealed class FoundryAgentFactory(TokenCredential credential, IOptions<Fou
         var settings = options.Value;
         if (!Uri.TryCreate(settings.ProjectEndpoint, UriKind.Absolute, out var uri) ||
             uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(settings.ModelDeployment))
-            throw new InvalidOperationException("Configure Foundry:ProjectEndpoint and Foundry:ModelDeployment before implementing the agent.");
+            throw new InvalidOperationException("Configure Foundry:ProjectEndpoint and Foundry:ModelDeployment before using the agent.");
         return new AIProjectClient(uri, credential).AsAIAgent(
             model: settings.ModelDeployment, name: settings.AgentName, instructions: instructions);
     }

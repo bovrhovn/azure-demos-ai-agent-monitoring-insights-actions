@@ -16,6 +16,9 @@ public static class OptionsRegistration
         services.AddOptions<AnalyticsOptions>().BindConfiguration(AnalyticsOptions.Section).ValidateDataAnnotations()
             .Validate(o => o.PageSize <= o.MaxPageSize, "Analytics:PageSize cannot exceed MaxPageSize.").ValidateOnStart();
         services.AddOptions<FoundryOptions>().BindConfiguration(FoundryOptions.Section);
+        services.AddOptions<ChatOptions>().BindConfiguration(ChatOptions.Section).ValidateDataAnnotations()
+            .Validate<Microsoft.Extensions.Options.IOptions<CosmosOptions>>((chat, cosmos) => chat.Container != cosmos.Value.Container,
+                "Chat:Container must be different from Cosmos:Container.").ValidateOnStart();
         services.AddOptions<WebhookOptions>().BindConfiguration(WebhookOptions.Section).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<HostingOptions>().BindConfiguration(HostingOptions.Section).ValidateDataAnnotations()
             .Validate(o => o.KnownProxies.All(value => System.Net.IPAddress.TryParse(value, out _)),

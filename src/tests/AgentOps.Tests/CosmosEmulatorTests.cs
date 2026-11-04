@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentOps.Web.Features.Executions;
+using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Scheduling;
@@ -18,6 +19,52 @@ namespace AgentOps.Tests;
 [TestClass]
 public sealed class CosmosEmulatorTests
 {
+    [TestMethod]
+    [TestCategory("Emulator")]
+    public async Task ChatInitializationIsIdempotentAndRoundTripsPrivateOrderedMessagesAtomically()
+    {
+        using var client = EmulatorClient();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        var cosmos = Options.Create(new CosmosOptions
+        {
+            Database = "test-chat-" + Guid.NewGuid().ToString("N"), InitializeDatabase = true
+        });
+        var chat = Options.Create(new ChatOptions());
+        var initialization = new CosmosInitialization(client, cosmos, chat);
+        try
+        {
+            await initialization.StartAsync(timeout.Token);
+            await initialization.StartAsync(timeout.Token);
+            var store = new CosmosChatStore(client, cosmos, chat);
+            var now = DateTimeOffset.UtcNow;
+            var session = new ChatSession("session", "owner", "Conversation", now, now);
+            await store.CreateAsync(session, timeout.Token);
+            var prompt = new ChatMessage("prompt", "owner", session.Id, "user", "Remember teal", now, 1);
+            await store.AppendAsync(session with { MessageCount = 1 }, prompt, timeout.Token);
+            var reply = new ChatMessage("reply", "owner", session.Id, "agent", "Teal.", now.AddSeconds(1), 2, "model");
+            await store.AppendAsync(session with { MessageCount = 2, UpdatedAt = reply.Timestamp }, reply, timeout.Token);
+            var restored = new CosmosChatStore(client, cosmos, chat);
+            (await restored.MessagesAsync("owner", session.Id, 10, null, timeout.Token)).Items.Should().Equal(prompt, reply);
+            var latest = await restored.MessagesAsync("owner", session.Id, 1, null, timeout.Token);
+            latest.HasMore.Should().BeTrue();
+            latest.Items.Should().Equal(reply);
+            (await restored.MessagesAsync("owner", session.Id, 1, 2, timeout.Token)).Items.Should().Equal(prompt);
+            (await restored.ListAsync("owner", 10, null, timeout.Token)).Items.Should().ContainSingle()
+                .Which.MessageCount.Should().Be(2);
+            (await restored.GetAsync("someone-else", session.Id, timeout.Token)).Should().BeNull();
+            (await restored.GetAsync("owner", prompt.Id, timeout.Token)).Should().BeNull();
+            (await restored.ListAsync("someone-else", 10, null, timeout.Token)).Items.Should().BeEmpty();
+            var fail = () => restored.AppendAsync(session with { Id = "missing-session" }, prompt with { Id = "not-committed" }, timeout.Token);
+            await fail.Should().ThrowAsync<CosmosException>();
+            (await restored.MessagesAsync("owner", session.Id, 10, null, timeout.Token)).Items.Should().HaveCount(2);
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await client.GetDatabase(cosmos.Value.Database).DeleteAsync(cancellationToken: cleanup.Token);
+        }
+    }
+
     [TestMethod]
     [TestCategory("Emulator")]
     public async Task HangfireBackgroundExecutionPersistsRealCosmosHistoryBeyondSchedulerLifetime()

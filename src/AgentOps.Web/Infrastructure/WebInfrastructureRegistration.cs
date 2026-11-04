@@ -41,6 +41,15 @@ public static class WebInfrastructureRegistration
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("chat", context =>
+                RateLimitPartition.GetFixedWindowLimiter(context.User.FindFirst("oid")?.Value ??
+                    context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "authenticated",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = context.RequestServices.GetRequiredService<IOptions<ChatOptions>>().Value.RequestsPerMinute,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0
+                    }));
             options.AddPolicy("executions", context =>
                 RateLimitPartition.GetFixedWindowLimiter(context.User.FindFirst("oid")?.Value ??
                     context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "authenticated",

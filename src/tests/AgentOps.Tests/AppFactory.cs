@@ -5,6 +5,7 @@ using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Features.Scheduling;
 using AgentOps.Web.Features.Agent;
+using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -24,6 +25,8 @@ internal sealed class AppFactory(IReadOnlyDictionary<string, string?>? settings 
 {
     public MemoryExecutionStore Store { get; } = new();
     public FakeInsights Insights { get; } = new();
+    public MemoryChatStore Chats { get; } = new();
+    public FakeChatAgent ChatAgent { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -50,6 +53,10 @@ internal sealed class AppFactory(IReadOnlyDictionary<string, string?>? settings 
                 services.AddSingleton(runner);
             }
             services.RemoveAll<IExecutionStore>();
+            services.RemoveAll<IChatStore>();
+            services.AddSingleton<IChatStore>(Chats);
+            services.RemoveAll<IChatAgent>();
+            services.AddSingleton<IChatAgent>(ChatAgent);
             services.AddSingleton<IExecutionStore>(Store);
             services.RemoveAll<IInsightsReader>();
             services.AddSingleton<IInsightsReader>(Insights);
@@ -80,7 +87,7 @@ internal sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSc
     {
         if (!Request.Headers.TryGetValue("X-Test-Role", out var role))
             return Task.FromResult(AuthenticateResult.NoResult());
-        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, "test-caller"), new Claim(ClaimTypes.Name, "Test operator"),
+        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, Request.Headers["X-Test-User"].FirstOrDefault() ?? "test-caller"), new Claim(ClaimTypes.Name, "Test operator"),
             new Claim(ClaimTypes.Role, role.ToString()) };
         var user = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(user, Scheme.Name)));

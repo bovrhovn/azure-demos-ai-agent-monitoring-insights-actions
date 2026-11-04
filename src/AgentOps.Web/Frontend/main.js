@@ -3,6 +3,7 @@ import OverviewPanel from "./components/OverviewPanel.vue";
 import SchedulePanel from "./components/SchedulePanel.vue";
 import LogsPanel from "./components/LogsPanel.vue";
 import ExecutionFeed from "./components/ExecutionFeed.vue";
+import ChatWorkspace from "./components/ChatWorkspace.vue";
 
 const routes = document.body.dataset;
 const panels = [
@@ -16,3 +17,12 @@ for (const [selector, component, props] of panels) {
     const element = document.querySelector(selector);
     if (element) createApp(component, { ...props, trigger: element.dataset.executionFeed }).mount(element);
 }
+
+const chat = document.querySelector("[data-chat]");
+if (chat) createApp(ChatWorkspace, {
+    endpoint: chat.dataset.endpoint,
+    token: chat.dataset.token,
+    canSend: chat.dataset.canSend === "true",
+    maxLength: Number(chat.dataset.maxLength),
+    historyLimit: Number(chat.dataset.historyLimit)
+}).mount(chat);

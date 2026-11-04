@@ -63,6 +63,7 @@ param scheduleEnabled bool = true
 param scheduleCron string = '*/15 * * * *'
 param cosmosDatabaseName string = 'agentops'
 param cosmosContainerName string = 'executions'
+param chatContainerName string = 'chats'
 param tags object = { application: 'agent-observatory' }
 
 var suffix = uniqueString(resourceGroup().id)
@@ -145,6 +146,7 @@ module cosmosData 'modules/cosmos-data.bicep' = {
     accountName: cosmosAccountName
     databaseName: cosmosDatabaseName
     containerName: cosmosContainerName
+    chatContainerName: chatContainerName
     principalId: identity.properties.principalId
   }
   dependsOn: [cosmosAccount]
@@ -403,6 +405,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) {
           { name: 'Cosmos__Endpoint', value: cosmosData.outputs.endpoint }
           { name: 'Cosmos__Database', value: cosmosDatabaseName }
           { name: 'Cosmos__Container', value: cosmosContainerName }
+          { name: 'Chat__Container', value: chatContainerName }
           { name: 'Scheduling__Enabled', value: string(scheduleEnabled) }
           { name: 'Scheduling__Cron', value: scheduleCron }
           { name: 'Foundry__ProjectEndpoint', value: 'https://${foundry.name}.services.ai.azure.com/api/projects/${foundryProject.name}' }

@@ -27,7 +27,7 @@
         </div>
         <div class="navigation-bar">
         <nav aria-label="Primary navigation">
-            @foreach (var item in new[] { (RouteConstants.IndexPage, "Overview"), (RouteConstants.SchedulesPage, "Schedules"), (RouteConstants.ExecutionsPage, "Endpoint runs"), (RouteConstants.LogsPage, "Application logs") })
+            @foreach (var item in new[] { (RouteConstants.IndexPage, "Overview"), (RouteConstants.SchedulesPage, "Schedules"), (RouteConstants.ExecutionsPage, "Endpoint runs"), (RouteConstants.LogsPage, "Application logs"), (RouteConstants.ChatPage, "Agent chat") })
             {
                 var active = ViewContext.RouteData.Values["page"]?.ToString() == item.Item1;
                 <a href="@Url.Content($"~{item.Item1}")" class="nav-item @(active ? "active" : "")" aria-current="@(active ? "page" : null)">
@@ -35,7 +35,7 @@
                 </a>
             }
         </nav>
-        <span class="environment-label"><span class="status-dot" aria-hidden="true"></span>Agent behavior not implemented</span>
+        <span class="environment-label"><span class="status-dot" aria-hidden="true"></span>Automated actions not implemented</span>
         </div>
     </header>
     <div class="workspace">

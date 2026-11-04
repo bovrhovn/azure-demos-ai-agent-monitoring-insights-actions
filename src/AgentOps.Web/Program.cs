@@ -1,4 +1,5 @@
 using AgentOps.Web;
+using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Identity;
 using AgentOps.Web.Features.Insights;
@@ -31,6 +32,7 @@ app.MapRazorPages();
 app.MapControllers();
 app.MapExecutionEndpoints();
 app.MapAnalyticsEndpoints();
+app.MapChatEndpoints();
 app.MapEventGridWebhook();
 app.MapHub<ExecutionHub>(RouteConstants.ExecutionHub).RequireAuthorization(Policies.View);
 app.MapHealthChecks(RouteConstants.Health).AllowAnonymous();
