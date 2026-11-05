@@ -39,7 +39,7 @@ Logs query `AppTraces`; overview queries `AppRequests` and `AppExceptions` on a 
 
 Production never uses a Cosmos key/connection string. The Cosmos SDK uses the shared `ManagedIdentityCredential` and requires Cosmos **data-plane** RBAC. Azure control-plane Contributor alone is insufficient.
 
-The footer identifies the configured execution data source: **Cosmos development**
+The header beside the signed-in user identifies the configured execution data source: **Cosmos development**
 with **Local emulator** in Development, or **Cosmos production** with the account
 name derived from `Cosmos:Endpoint` in Production. Other environments retain their
 actual environment label. Only database/container names and public account metadata
@@ -80,7 +80,7 @@ connection string is required for querying.
 |---|---|
 | `InsightsTools:Enabled` | `true`; `false` removes all telemetry tools |
 | `InsightsTools:DefaultLookbackMinutes` | `60`; must not exceed the maximum |
-| `InsightsTools:MaxLookbackMinutes` | `1440`, range `1..10080` |
+| `InsightsTools:MaxLookbackMinutes` | `10080` (seven days), range `1..10080` |
 | `InsightsTools:DefaultCount` | `5`; must not exceed `MaxRows` |
 | `InsightsTools:MaxRows` | `20`, range `1..100` |
 | `InsightsTools:QueryTimeoutSeconds` | `30`, range `1..120`; also bounded by the chat deadline |
@@ -158,6 +158,13 @@ The handler timeout is cooperative: future agent/tool implementations must honor
 Chat uses `BasicFoundryAgentRunner` through `IChatAgent`. It creates a Microsoft Agent Framework agent with `FoundryAgentFactory`, supplies Cosmos conversation history with each prompt, and records the model from the response (or the configured deployment). Startup and automated placeholder runs do not require a model and do not invoke one. The preview `Microsoft.Agents.AI.AzureAI` package is pinned; use `--prerelease` explicitly when evaluating upgrades.
 
 The factory validates endpoint/model inputs when creating an agent. Missing or invalid settings return HTTP 503 with a configuration message rather than an unexplained 500. The UI shows a correlation reference for failures; full exception details remain in server logs. A saved prompt does not imply the model was called. Configure `Foundry:ProjectEndpoint` and `Foundry:ModelDeployment` locally with user-secrets, then restart the app. Azure deployments supply these settings through Bicep. No API key is required.
+
+Upstream Foundry HTTP 429 responses become an actionable HTTP 503 rate-limit notice, not an
+unexplained HTTP 500 or an automatic model retry. The saved user prompt remains available.
+Local user-secrets and Container App environment settings are independent: choosing a model
+in Azure does not change `Foundry:ModelDeployment` locally. Tool conversations require several
+model requests per turn; provision adequate request/token quota or select an existing deployment
+with sufficient quota. The agent receives the current configured telemetry limits each turn.
 
 `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` are processed before HTTPS redirection, Entra authentication and SignalR origin validation. Forwarded hosts must match `AllowedHosts`; untrusted peers cannot change the external URL. Default local hosting retains ASP.NET Core's loopback trust.
 

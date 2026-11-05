@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using AgentOps.Web.Features.Identity;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web.UI;

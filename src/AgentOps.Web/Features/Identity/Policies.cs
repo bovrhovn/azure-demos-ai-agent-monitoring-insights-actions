@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;

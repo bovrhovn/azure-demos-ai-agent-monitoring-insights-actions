@@ -1,4 +1,4 @@
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 /// <summary>Foundry model inputs shared by the factory and conversational runner.</summary>
 public sealed class FoundryOptions

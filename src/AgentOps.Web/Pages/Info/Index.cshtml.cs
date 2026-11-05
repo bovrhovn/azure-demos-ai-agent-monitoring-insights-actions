@@ -1,5 +1,6 @@
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Web.Pages.Info;

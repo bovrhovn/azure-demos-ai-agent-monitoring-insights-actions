@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 /// <summary>Application Insights querying, distinct from telemetry ingestion.</summary>
 public sealed class InsightsOptions

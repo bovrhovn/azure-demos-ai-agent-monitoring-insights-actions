@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 /// <summary>Trust boundaries for ingress and explicitly configured reverse proxies.</summary>
 public sealed class HostingOptions

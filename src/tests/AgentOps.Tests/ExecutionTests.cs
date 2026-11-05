@@ -2,6 +2,7 @@ using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Scheduling;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

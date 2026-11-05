@@ -6,8 +6,9 @@ Generated: 2026-10-21
 ## 1. Project Overview
 
 Deploy the current working-tree application to the existing agentops-web Container App.
-Preserve all existing runtime settings, secret references, identity, ingress, probes and scale.
-This update builds a new immutable image and changes only the application image.
+Preserve existing runtime settings, identity, ingress, probes and scale.
+The current approved update builds a new immutable image and rotates only the webhook
+Key Vault secret, its application reference, and the matching Event Grid delivery header.
 
 ## 2. Approved Target
 
@@ -28,7 +29,8 @@ This update builds a new immutable image and changes only the application image.
 recipe.type: azcli
 
 Use ACR Tasks and a digest-pinned image with az containerapp update --image.
-Do not reprovision infrastructure, rotate secrets or recreate Event Grid subscriptions.
+Do not reprovision infrastructure or recreate Event Grid subscriptions. Rotate only the
+explicitly approved webhook credential; preserve the confidential Entra credential.
 
 ## 5. Architecture
 
@@ -59,6 +61,41 @@ Preserve the existing confidential Entra credential without reading or rotating 
 Delete only the individually approved PostgreSQL server after the new version is healthy.
 
 ## 7. Validation Proof
+
+### Production redeploy and webhook rotation (2026-11-04, current request)
+
+- User confirmed MCAPS Azure Demos (466e1dc9-e0b4-4178-9da3-6a24d4df5a13),
+  rg-aiagent/agentops-web, Sweden Central, for the current working tree.
+- Approved rotation of webhook-api-key in the existing Key Vault, retaining the
+  Webhook__ApiKey secret-backed environment variable, and synchronizing the matching
+  Event Grid subscription delivery header. Never record the credential value.
+- Preserve all other configuration, identities, network restrictions, permissions,
+  ingress, probes and single-replica scaling. No infrastructure-wide deployment.
+- All validation checks pass requires:
+  - Core CLI/authentication, Bicep compilation, ARM validation and what-if of a
+    version-matched live application snapshot and scoped secret/header updates.
+  - Build the current Linux/amd64 image using the existing BuildKit ACR task,
+    verify its digest, and run frontend and Release regression checks.
+  - Verify Azure Policy through ARM provider validation and review existing
+    managed-identity role declarations and live grants.
+- 2026-11-04T13:38Z: frontend tests 10 passed; production browser bundle built.
+  Release solution tests with browser verification: 219 passed, 4 opt-in/live
+  prerequisites skipped, no failures.
+- validate-deployment.ps1 for app-validation.bicep in session storage: OVERALL PASS,
+  including CLI/authentication, compilation, ARM provider validation and what-if
+  with Create 0, Modify 0, Delete 0.
+- validate-deployment.ps1 for rotation-validation.bicep with a non-deployed secure
+  placeholder: OVERALL PASS. Resource-level what-if targets only the existing
+  webhook secret and matching Event Grid subscription; no deletions.
+- ACR BuildKit task dt18 succeeded at 2026-11-04T13:38:17Z. Registry manifest
+  independently matches sha256:e57f281443fcba05365cf4f8ce58b2ed0debda55c79db52193dbf96e2c79bd9d,
+  tag deploy-20261104133413-9cf0c9a.
+- Repository main.bicep compilation passed. Static ABAC Repository Reader,
+  Key Vault Secrets User, Monitoring Reader, Foundry User and database-scoped
+  Cosmos contributor declarations agree with existing live identity grants.
+- No permissions, firewall settings, SKUs or resource counts need changes.
+- Initial ACR submission rejected positional syntax before queuing any task;
+  repeated --set arguments resolved it. All validation failures are resolved.
 
 ### Current update (2026-11-04)
 
@@ -140,6 +177,38 @@ Validated by: azure-validate skill, 2026-10-21.
 - Remove the approved PostgreSQL server and verify final resource inventory.
 
 ## 9. Live Deployment Evidence
+
+### UI redeploy and webhook rotation (2026-11-04, current request)
+
+- ACR BuildKit task dt18 succeeded. Deployed the digest-pinned image
+  bovrhovncr.azurecr.io/agent-observatory@sha256:e57f281443fcba05365cf4f8ce58b2ed0debda55c79db52193dbf96e2c79bd9d.
+- Revision agentops-web--ui-20261104-134236 is Healthy, RunningAtMaxScale, one
+  replica, and receives 100 percent traffic. It is the only active revision.
+- URL: https://agentops-web.ambitiouspebble-72f10e6e.swedencentral.azurecontainerapps.io.
+- Secure incremental ARM deployment agentops-webhook-key-20261104134112
+  succeeded, rotating only webhook-api-key. No credential value was written to
+  source files, session artifacts, deployment outputs, or this plan.
+- Webhook__ApiKey remains exclusively secret-backed. The webhook-api-key
+  Container Apps secret now pins Key Vault version ba396cbc070544359f7acf0c77a1729f
+  through the unchanged managed identity, ensuring the new revision resolves it.
+- Live webhook POST using the requested key returned HTTP 200; an invalid key
+  returned HTTP 401. The verification notification invoked no agent actions.
+- Event Grid agent-webhook is Succeeded with X-Api-Key as a secret static delivery
+  header. The new revision logged the actual authenticated subscription-validation
+  request at 2026-11-04T13:46:30Z. Secret values are masked on subsequent reads;
+  literal read-back equality is therefore not a valid verification method.
+- Initial Event Grid PATCH attempts returned InvalidRequest/empty payload without
+  changing the subscription. A full UTF-8 create-or-update request preserving the
+  validated configuration succeeded; no subscription deletion was performed.
+- Final /health, /health/live and /health/ready all return HTTP 200.
+- Live browser bundle exactly matches the tested local production build:
+  144090 bytes, SHA-256 45C781E3772AF7A2F83A1F737442C9E5447471299FA3C17AE996F9B4C3ACCB53.
+  Next-step, diagnostic and stack-frame markup/styles are present.
+- API-version-matched before/after comparison confirms all other settings,
+  environment variables, identity, network, registry, probes, scale and resources
+  unchanged. Live runtime roles remain unchanged and sufficient.
+- Frontend tests: 10 passed. Release solution with browser tests: 219 passed,
+  4 emulator/live tests skipped because their prerequisites were not enabled.
 
 ### Latest deployment (2026-11-04)
 

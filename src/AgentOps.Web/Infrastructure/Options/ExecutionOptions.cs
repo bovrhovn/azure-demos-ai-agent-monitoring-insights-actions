@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 /// <summary>Bounded query and execution settings.</summary>
 public sealed class ExecutionOptions

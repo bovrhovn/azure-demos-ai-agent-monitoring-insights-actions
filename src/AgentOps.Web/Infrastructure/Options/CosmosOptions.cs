@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 /// <summary>Cosmos persistence configuration; credentials are development-only.</summary>
 public sealed class CosmosOptions

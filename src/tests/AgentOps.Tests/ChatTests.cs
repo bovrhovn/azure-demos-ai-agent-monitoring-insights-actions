@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using AgentOps.Web;
 using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

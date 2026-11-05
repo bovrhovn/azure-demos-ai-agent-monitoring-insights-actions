@@ -2,6 +2,7 @@ using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Identity;
 using AgentOps.Web.Features.Scheduling;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Hangfire;
 using Hangfire.Storage;
 using Microsoft.Extensions.Options;

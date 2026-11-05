@@ -4,6 +4,7 @@ using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Scheduling;
+using AgentOps.Web.Infrastructure.Options;
 using FluentAssertions;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;

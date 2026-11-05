@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AgentOps.Web.Features.Identity;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Web.Features.Executions;

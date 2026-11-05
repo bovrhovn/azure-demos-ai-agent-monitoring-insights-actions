@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using AgentOps.Web.Features.Identity;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.Extensions.Options;
 

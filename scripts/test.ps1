@@ -13,6 +13,8 @@ try {
     $npm = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
     & $npm --prefix $web ci --ignore-scripts --no-audit --no-fund
     if ($LASTEXITCODE) { throw 'npm ci failed.' }
+    & $npm --prefix $web test
+    if ($LASTEXITCODE) { throw 'Frontend tests failed.' }
     & $npm --prefix $web run build
     if ($LASTEXITCODE) { throw 'Browser asset build failed.' }
     dotnet test AgentOps.slnx --configuration $Configuration --verbosity minimal

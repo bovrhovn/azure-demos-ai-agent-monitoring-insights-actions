@@ -1,4 +1,5 @@
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Azure.AI.Projects;
 using Azure.Core;
 using Microsoft.Agents.AI;

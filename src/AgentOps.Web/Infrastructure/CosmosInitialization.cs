@@ -1,3 +1,4 @@
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;

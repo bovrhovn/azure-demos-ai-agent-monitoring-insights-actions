@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Web.Features.Executions;

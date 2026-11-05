@@ -40,5 +40,8 @@ app.MapHealthChecks(RouteConstants.Liveness, new() { Predicate = _ => false }).A
 app.MapHealthChecks(RouteConstants.Readiness).AllowAnonymous();
 await app.RunAsync();
 
-/// <summary>Application entry point exposed for integration testing.</summary>
-public partial class Program;
+namespace AgentOps.Web
+{
+    /// <summary>Application entry point exposed for integration testing.</summary>
+    public partial class Program;
+}

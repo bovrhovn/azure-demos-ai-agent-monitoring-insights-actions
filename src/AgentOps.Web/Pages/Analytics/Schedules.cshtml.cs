@@ -1,6 +1,7 @@
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Features.Scheduling;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
 using Hangfire;

@@ -4,6 +4,7 @@ using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Features.Scheduling;
+using AgentOps.Web.Infrastructure.Options;
 using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.Query.Logs;

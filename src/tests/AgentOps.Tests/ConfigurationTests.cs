@@ -5,6 +5,7 @@ using AgentOps.Web.Features.Identity;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Scheduling;
+using AgentOps.Web.Infrastructure.Options;
 using Azure.Core;
 using Azure.Identity;
 using FluentAssertions;

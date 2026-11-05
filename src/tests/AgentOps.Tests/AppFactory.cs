@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using AgentOps.Web;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Features.Scheduling;

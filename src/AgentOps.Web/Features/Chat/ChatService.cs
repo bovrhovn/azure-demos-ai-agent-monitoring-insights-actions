@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Web.Features.Chat;

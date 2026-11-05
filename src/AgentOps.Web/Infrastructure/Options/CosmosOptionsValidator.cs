@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace AgentOps.Web.Infrastructure;
+namespace AgentOps.Web.Infrastructure.Options;
 
 /// <summary>Checks environment-specific credential boundaries before serving requests.</summary>
 public sealed class CosmosOptionsValidator(IHostEnvironment environment) : IValidateOptions<CosmosOptions>

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using AgentOps.Web;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Azure.Core;
 using Azure.Monitor.Query.Logs;
 using Azure.Monitor.Query.Logs.Models;

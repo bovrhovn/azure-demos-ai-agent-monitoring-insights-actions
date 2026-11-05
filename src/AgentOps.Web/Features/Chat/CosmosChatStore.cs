@@ -1,5 +1,6 @@
 using System.Net;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Options;
 

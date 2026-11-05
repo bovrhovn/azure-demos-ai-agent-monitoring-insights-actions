@@ -1,5 +1,6 @@
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Infrastructure;
+using AgentOps.Web.Infrastructure.Options;
 using Azure;
 using Azure.Core;
 using Azure.Monitor.Query.Logs;
