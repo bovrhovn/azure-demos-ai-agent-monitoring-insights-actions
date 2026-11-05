@@ -9,8 +9,22 @@
     <dl><div><dt>CRON / UTC</dt><dd><code>@Model.Settings.Cron</code></dd></div><div><dt>NEXT EXECUTION / UTC</dt><dd>@(Model.Schedule?.NextExecution?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Not scheduled")</dd></div><div><dt>LAST DISPATCH / UTC</dt><dd>@(Model.Schedule?.LastExecution?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Not yet dispatched")</dd></div></dl>
 </section>
 <p class="muted">Scheduling state is process-local. Inspect the authoritative Cosmos execution history below for outcomes; Hangfire dispatch status is not an agent result.</p>
+<section class="flow-panel" aria-labelledby="investigation-heading">
+    <div class="section-title"><h2 id="investigation-heading">Read-only error investigation</h2><span class="badge">HUMAN REVIEW REQUIRED</span></div>
+    <p>Each scheduled or API execution queries up to @Model.EvidenceCount recent exceptions and @Model.EvidenceCount error/critical traces from the configured Application Insights resource within the preceding @Model.LookbackMinutes minutes (UTC), then retrieves bounded exception details. The configured Foundry model proposes causes, diagnostic/remediation steps, risks, verification and questions for you. Evidence limits and missing details are disclosed.</p>
+    @if (!Model.InvestigationConfigured)
+    {
+        <p class="notice" role="status">Action needed: configure <code>Insights:ResourceId</code>, enable <code>InsightsTools</code> with at least two tool calls, and set an HTTPS <code>Foundry:ProjectEndpoint</code> and deployed <code>Foundry:ModelDeployment</code>. Missing configuration fails executions; it does not mean there are no errors.</p>
+    }
+    else
+    {
+        <p class="muted">Model and telemetry settings are present; this is not a connectivity check. The application identity needs telemetry read and model invocation permission. Background webhook delivery also requires a concrete <code>AllowedHosts</code> entry and a reachable local listener.</p>
+    }
+    <p>When evidence exists, the application posts an authenticated Event Grid proposal to the <a asp-page="/Notifications/Index">webhook inbox</a>. Select it to prefill a private chat, review it and send it yourself. Only an operator may mark it handled and record a comment. No remediation, chat or approval is automatic.</p>
+    <p class="muted">Successful empty queries skip the model and webhook. Query, model or delivery failures remain failures. Completed means investigation finished, not incident resolved. One proposal ID per execution prevents duplicate inbox entries on redelivery; a timeout may still have saved the proposal. Different runs may find overlapping evidence. Agent execution/delivery logs are excluded where telemetry metadata identifies them.</p>
+</section>
 <section class="flow-panel" data-execution-feed="Schedule" data-history-limit="@Model.HistoryLimit">
     <div class="section-title"><h2>Scheduled execution history</h2><span id="live-status" class="connection-status" role="status">Connecting live feed...</span></div>
     <partial name="_ExecutionTable" model="Model.Executions" />
 </section>
-<p class="muted">Change <code>Scheduling:Cron</code> or <code>Scheduling:Enabled</code>, then restart. Hangfire uses volatile in-memory storage: queued jobs and scheduling state are lost on restart, and the recurring definition is re-registered. Failed agent jobs have no automatic retries. Cosmos execution history survives restarts. A completed scaffold job is not a completed AI action.</p>
+<p class="muted">Change <code>Scheduling:Cron</code> or <code>Scheduling:Enabled</code>, then restart. Hangfire uses volatile in-memory storage: queued jobs and scheduling state are lost on restart, and the recurring definition is re-registered. Failed agent jobs have no automatic retries. Shutdown requeue is not exactly-once execution. Cosmos execution history survives restarts.</p>

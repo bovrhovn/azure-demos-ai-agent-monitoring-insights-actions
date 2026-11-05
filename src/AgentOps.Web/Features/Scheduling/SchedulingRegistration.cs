@@ -38,7 +38,7 @@ public sealed class RecurringScheduleRegistration(
         if (settings.Enabled)
         {
             manager.AddOrUpdate<AgentJob>(settings.RecurringJobId,
-                job => job.RunAsync(CancellationToken.None), settings.Cron,
+                job => job.RunAsync(CancellationToken.None, null), settings.Cron,
                 new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
             logger.LogInformation("Registered Hangfire recurring job {RecurringJobId} with UTC cron {Cron}; scheduling storage is volatile",
                 settings.RecurringJobId, settings.Cron);

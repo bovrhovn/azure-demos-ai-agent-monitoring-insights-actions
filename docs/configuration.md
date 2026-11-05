@@ -92,7 +92,7 @@ connection string is required for querying.
 The server identity needs Monitoring Reader on the configured Application Insights resource.
 Bicep grants this on the deployed component; observing a different component requires its own
 role assignment. Query access is application-wide, not delegated per-user access. Only the
-existing operator-authorized chat write path invokes the runner; readers cannot invoke tools.
+operator-authorized chat write path, authorized execution API and configured schedule invoke telemetry queries; readers cannot invoke investigations or tools.
 
 Tool results are field-allowlisted (no user/client fields or custom dimensions), scrub common
 credential/connection-string/token/email patterns, and mark clipped results explicitly.
@@ -117,10 +117,10 @@ Operators can delete their own session and all saved messages from the chat head
 
 `Webhook:ApiKey` is required and validated at startup. Configure it with user-secrets locally
 or the Key Vault-backed `Webhook__ApiKey` secret reference in Container Apps.
-The no-op `POST /api/webhooks/eventgrid` endpoint requires the `X-Api-Key` header;
+The `POST /api/webhooks/eventgrid` endpoint requires the `X-Api-Key` header;
 Entra reader/operator sessions cannot substitute for this credential.
 Event Grid subscription validation returns `validationResponse`, while normal notifications
-return an empty `200 OK` without dispatching an execution. Query-string keys are not accepted.
+return an empty `200 OK` after saving unhandled inbox notifications, without dispatching an execution. Query-string keys are not accepted.
 
 ## Execution and scheduling
 
@@ -138,7 +138,13 @@ return an empty `200 OK` without dispatching an execution. Query-string keys are
 
 Restart to apply schedule changes. Five-field cron syntax is validated at startup and interpreted in UTC by Hangfire's minute-granularity recurring scheduler. One worker processes jobs. Queues and scheduling state are volatile and lost on restart; the configured recurring definition is re-registered, without recovery of missed work. Agent failures have no automatic retries; shutdown requeue behavior is distinct from retry. Registration failures fail startup. See [scheduling semantics](architecture.md#in-memory-scheduling-contract).
 
-The handler timeout is cooperative: future agent/tool implementations must honor cancellation. Keep it below ingress/client timeouts for synchronous HTTP calls. Long runs should eventually move to an asynchronous accepted-job API.
+The handler timeout is cooperative across telemetry, model and webhook calls. Keep it below ingress/client timeouts for synchronous HTTP calls. Long runs should eventually move to an asynchronous accepted-job API.
+
+The investigation uses `InsightsTools:DefaultLookbackMinutes` and `DefaultCount` for exceptions and error/critical traces, then at most `MaxToolCalls - 2` detail queries. `MaxToolCalls` must be at least two for investigations. The total evidence input is bounded by `MaxResultCharacters`; fields and rows retain their existing bounds. `Chat:MaxOutputTokens` bounds model output and `Chat:MaxPromptLength` bounds the complete inbox message so it can prefill chat. Too-small limits fail explicitly rather than fabricate an empty result.
+
+Before enabling production scheduling, verify `Insights:ResourceId`, enabled tools, HTTPS Foundry project endpoint and existing model deployment, managed-identity telemetry/model permissions, and provisioned execution/notification/chat containers. Model inference is billable when matching evidence exists. A concrete (non-wildcard) `AllowedHosts` entry and local HTTP(S) listener are required for background webhook delivery. Container Apps must retain `Hosting:BehindContainerAppsIngress=true` and its HTTPS ingress boundary; no external webhook URL is configured. Delivery reuses the authenticated local diagnostic transport, has `Notifications:TestTimeoutSeconds` as its HTTP timeout, and performs no automatic outbound retry. Keep `Webhook:MaxPayloadBytes` large enough for the bounded message plus evidence metadata.
+
+Successful empty evidence queries skip the model/webhook. Failures are persisted as `Failed` or `Canceled`, not no-errors success. Proposal IDs are stable per execution and webhook redelivery preserves handled/comments/chat links. Delivery timeout is uncertain: refresh the inbox before manual recovery. Different runs may contain overlapping errors; this is not cross-run incident deduplication.
 
 ## Foundry and hosting
 
@@ -155,7 +161,7 @@ The handler timeout is cooperative: future agent/tool implementations must honor
 | `ASPNETCORE_ENVIRONMENT` | The container defaults to `Production`; local launcher explicitly selects `Development` |
 | `AZURE_CLIENT_ID` | Production user-assigned managed identity client ID; if omitted, use system-assigned identity. This is not the OIDC app registration client ID. |
 
-Chat uses `BasicFoundryAgentRunner` through `IChatAgent`. It creates a Microsoft Agent Framework agent with `FoundryAgentFactory`, supplies Cosmos conversation history with each prompt, and records the model from the response (or the configured deployment). Startup and automated placeholder runs do not require a model and do not invoke one. The preview `Microsoft.Agents.AI.AzureAI` package is pinned; use `--prerelease` explicitly when evaluating upgrades.
+Chat uses `BasicFoundryAgentRunner` through `IChatAgent`. It creates a Microsoft Agent Framework agent with `FoundryAgentFactory`, supplies Cosmos conversation history with each prompt, and records the model from the response (or the configured deployment). Scheduled/API investigations use `ErrorInvestigationRunner` and the same configured factory/deployment, with application-selected evidence and no model tools. Startup does not invoke a model; successful empty investigations do not invoke one either. The preview `Microsoft.Agents.AI.AzureAI` package is pinned; use `--prerelease` explicitly when evaluating upgrades.
 
 The factory validates endpoint/model inputs when creating an agent. Missing or invalid settings return HTTP 503 with a configuration message rather than an unexplained 500. The UI shows a correlation reference for failures; full exception details remain in server logs. A saved prompt does not imply the model was called. Configure `Foundry:ProjectEndpoint` and `Foundry:ModelDeployment` locally with user-secrets, then restart the app. Azure deployments supply these settings through Bicep. No API key is required.
 

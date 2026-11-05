@@ -11,7 +11,8 @@ namespace AgentOps.Web.Features.Insights;
 public enum TelemetryQueryKind { Exceptions, ExceptionDetails, Traces, Operation }
 
 public sealed record TelemetryQueryRequest(TelemetryQueryKind Kind, DateTimeOffset Start, DateTimeOffset End,
-    int Count, string? ItemId = null, string? OperationId = null, string? Service = null, int? MinimumSeverity = null);
+    int Count, string? ItemId = null, string? OperationId = null, string? Service = null, int? MinimumSeverity = null,
+    bool ExcludeAgentTelemetry = false);
 
 public sealed record TelemetryRow(DateTimeOffset Timestamp, string Type, string ItemId, string OperationId,
     string Service, string Severity, string Summary, string Details);
@@ -83,6 +84,16 @@ public sealed class TelemetryQuery(LogsQueryClient client, IOptions<InsightsOpti
             query += "\n| where cloud_RoleName == " + Literal(request.Service);
         if (request.MinimumSeverity is not null)
             query += "\n| where severityLevel >= " + request.MinimumSeverity.Value.ToString(CultureInfo.InvariantCulture);
+        if (request.ExcludeAgentTelemetry)
+            query += """
+
+                | where isempty(tostring(customDimensions.ExecutionId))
+                | where tostring(customDimensions.CategoryName) !startswith 'AgentOps.Web.Features.Agent'
+                    and tostring(customDimensions.CategoryName) !startswith 'AgentOps.Web.Features.Executions'
+                    and tostring(customDimensions.CategoryName) !startswith 'AgentOps.Web.Features.Notifications'
+                    and tostring(customDimensions.CategoryName) !startswith 'AgentOps.Web.Features.Webhooks'
+                    and tostring(customDimensions.CategoryName) !startswith 'Hangfire'
+                """;
         return query + "\n| top " + (request.Count + 1).ToString(CultureInfo.InvariantCulture) +
             " by timestamp " + (request.Kind == TelemetryQueryKind.Operation ? "asc" : "desc") +
             "\n| project timestamp, telemetryType, itemId, operation_Id, cloud_RoleName, severity=tostring(severityLevel), summary, detail";

@@ -14,6 +14,7 @@ public sealed class IndexModel(IAntiforgery antiforgery, IAuthorizationService a
     public bool CanOperate { get; private set; }
     public int MaxSearchLength => options.Value.MaxSearchLength;
     public int MaxCommentLength => options.Value.MaxCommentLength;
+    public int MaxTestMessageLength => options.Value.MaxTestMessageLength;
 
     public async Task OnGetAsync()
     {

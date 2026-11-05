@@ -26,7 +26,7 @@ public sealed class ExecutionTests
     [DataRow(ExecutionContract.Schedule)]
     public async Task BothTriggersPersistAndPublishStartedThenFinalState(string trigger)
     {
-        runner.Setup(x => x.RunAsync(It.IsAny<CancellationToken>()))
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
 
         var execution = await Handler().RunAsync(trigger, "test", CancellationToken.None);
@@ -45,7 +45,7 @@ public sealed class ExecutionTests
     [TestMethod]
     public async Task AgentFailureIsPersistedAndRethrownWithoutLeakingExceptionInHistory()
     {
-        runner.Setup(x => x.RunAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("private error detail"));
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("private error detail"));
 
         var action = () => Handler().RunAsync(ExecutionContract.Endpoint, "test", CancellationToken.None);
 
@@ -60,7 +60,7 @@ public sealed class ExecutionTests
     public async Task CanceledCallerStillPersistsFinalStateWithIndependentToken()
     {
         using var cancellation = new CancellationTokenSource();
-        runner.Setup(x => x.RunAsync(It.IsAny<CancellationToken>())).Returns<CancellationToken>(_ =>
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>())).Returns<ExecutionRecord, CancellationToken>((_, _) =>
         {
             cancellation.Cancel();
             return Task.FromCanceled<AgentOutcome>(cancellation.Token);
@@ -80,7 +80,7 @@ public sealed class ExecutionTests
     {
         notifier.Setup(x => x.PublishAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("disconnected"));
-        runner.Setup(x => x.RunAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
 
         var result = await Handler().RunAsync(trigger, "test", CancellationToken.None);
 
@@ -100,7 +100,7 @@ public sealed class ExecutionTests
         var action = () => handler.RunAsync(ExecutionContract.Endpoint, "test", CancellationToken.None);
 
         await action.Should().ThrowAsync<IOException>();
-        runner.Verify(x => x.RunAsync(It.IsAny<CancellationToken>()), Times.Never);
+        runner.Verify(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [TestMethod]
@@ -109,7 +109,7 @@ public sealed class ExecutionTests
         var failingStore = new Mock<IExecutionStore>();
         failingStore.Setup(x => x.SaveAsync(It.Is<ExecutionRecord>(r => r.Status != ExecutionContract.Running), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("write unavailable"));
-        runner.Setup(x => x.RunAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
         var handler = new ExecuteAgent(failingStore.Object, runner.Object, notifier.Object, TimeProvider.System,
             Options.Create(new ExecutionOptions()), NullLogger<ExecuteAgent>.Instance);
 
@@ -121,18 +121,26 @@ public sealed class ExecutionTests
     [TestMethod]
     public async Task ScheduledJobUsesSharedPipelineAndScheduleTrigger()
     {
-        runner.Setup(x => x.RunAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new AgentOutcome(ExecutionContract.NotImplemented, "TODO"));
         await new AgentJob(Handler()).RunAsync(CancellationToken.None);
         store.Writes.Last().Trigger.Should().Be(ExecutionContract.Schedule);
         store.Writes.Last().RequestedBy.Should().Be("hangfire");
     }
 
     [TestMethod]
-    public async Task StubExplicitlyReportsNotImplemented()
+    public async Task RequeuedExecutionReusesItsIdentityAndWindowAndSkipsCompletedWork()
     {
-        var result = await new PendingAgentRunner(NullLogger<PendingAgentRunner>.Instance).RunAsync(CancellationToken.None);
-        result.Status.Should().Be(ExecutionContract.NotImplemented);
-        result.Summary.Should().Contain("No model or action");
+        var old = new ExecutionRecord("hangfire-stable", ExecutionContract.Schedule, ExecutionContract.Canceled,
+            now.AddMinutes(-5), now, "hangfire", "stable-correlation", "Canceled");
+        await store.SaveAsync(old, CancellationToken.None);
+        runner.Setup(x => x.RunAsync(It.Is<ExecutionRecord>(record => record.Id == old.Id &&
+                record.StartedAt == old.StartedAt && record.CorrelationId == old.CorrelationId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentOutcome(ExecutionContract.Completed, "Proposal delivered"));
+        var result = await Handler().RunAsync(ExecutionContract.Schedule, "hangfire", CancellationToken.None, old.Id);
+        result.Status.Should().Be(ExecutionContract.Completed);
+        (await Handler().RunAsync(ExecutionContract.Schedule, "hangfire", CancellationToken.None, old.Id)).Should().Be(result);
+        runner.Verify(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+        store.Writes.Should().HaveCount(3);
     }
 
     [TestMethod]

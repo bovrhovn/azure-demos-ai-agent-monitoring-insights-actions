@@ -37,7 +37,7 @@ public sealed class TelemetryToolTests
         var client = new Mock<LogsQueryClient>();
         string? kql = null;
         var request = new TelemetryQueryRequest(kind, Now.AddMinutes(-30), Now, 1, "item-1", "operation-1",
-            "web'; union secrets //", 2);
+            "web'; union secrets //", 2, ExcludeAgentTelemetry: true);
         client.Setup(item => item.QueryResourceAsync(It.Is<ResourceIdentifier>(id => id.ToString() == Resource),
                 It.IsAny<string>(), new LogsQueryTimeRange(request.Start, request.End),
                 It.Is<LogsQueryOptions>(options => options.ServerTimeout == TimeSpan.FromSeconds(30)), It.IsAny<CancellationToken>()))
@@ -53,7 +53,10 @@ public sealed class TelemetryToolTests
         result.Truncated.Should().BeTrue();
         kql.Should().StartWith(source).And.Contain("top 2 by timestamp")
             .And.Contain("cloud_RoleName == 'web\\'; union secrets //'")
-            .And.Contain("severityLevel >= 2").And.Contain("2026-11-04T11:30:00");
+            .And.Contain("severityLevel >= 2").And.Contain("2026-11-04T11:30:00")
+            .And.Contain("isempty(tostring(customDimensions.ExecutionId))")
+            .And.Contain("!startswith 'AgentOps.Web.Features.Agent'")
+            .And.Contain("!startswith 'AgentOps.Web.Features.Webhooks'");
         if (kind == TelemetryQueryKind.ExceptionDetails) kql.Should().Contain("itemId == 'item-1'").And.Contain("tostring(details)");
         if (kind == TelemetryQueryKind.Operation) kql.Should().Contain("operation_Id == 'operation-1'").And.Contain("(dependencies").And.Contain("timestamp asc");
         client.VerifyAll();

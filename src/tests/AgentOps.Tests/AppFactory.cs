@@ -19,6 +19,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace AgentOps.Tests;
 
@@ -30,6 +31,7 @@ internal sealed class AppFactory(IReadOnlyDictionary<string, string?>? settings 
     public MemoryChatStore Chats { get; } = new();
     public FakeChatAgent ChatAgent { get; } = new();
     public MemoryNotificationStore Notifications { get; } = new();
+    public Moq.Mock<ITelemetryQuery> Telemetry { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -50,6 +52,12 @@ internal sealed class AppFactory(IReadOnlyDictionary<string, string?>? settings 
         }).AddInMemoryCollection(settings ?? new Dictionary<string, string?>()));
         builder.ConfigureTestServices(services =>
         {
+            Telemetry.Setup(query => query.QueryAsync(Moq.It.IsAny<TelemetryQueryRequest>(), Moq.It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new TelemetryQueryResult([], false));
+            services.PostConfigure<AgentOps.Web.Infrastructure.Options.InsightsOptions>(options =>
+                options.ResourceId = "/subscriptions/test/resourceGroups/test/providers/Microsoft.Insights/components/test");
+            services.RemoveAll<ITelemetryQuery>();
+            services.AddSingleton(Telemetry.Object);
             if (runner is not null)
             {
                 services.RemoveAll<IAgentRunner>();

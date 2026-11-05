@@ -32,9 +32,12 @@ if (chat) createApp(ChatWorkspace, {
 const notifications = document.querySelector("[data-notifications]");
 if (notifications) createApp(NotificationInbox, {
     endpoint: notifications.dataset.endpoint,
+    telemetryTestEndpoint: notifications.dataset.telemetryTestEndpoint,
+    webhookTestEndpoint: notifications.dataset.webhookTestEndpoint,
     chatPage: notifications.dataset.chatPage,
     token: notifications.dataset.token,
     canOperate: notifications.dataset.canOperate === "true",
     maxSearchLength: Number(notifications.dataset.maxSearchLength),
-    maxCommentLength: Number(notifications.dataset.maxCommentLength)
+    maxCommentLength: Number(notifications.dataset.maxCommentLength),
+    maxTestMessageLength: Number(notifications.dataset.maxTestMessageLength)
 }).mount(notifications);

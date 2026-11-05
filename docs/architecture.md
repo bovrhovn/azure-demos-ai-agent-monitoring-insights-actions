@@ -1,6 +1,6 @@
 # Architecture
 
-Agent Observatory is a small vertical-slice application. The objective is to keep orchestration real while deferring the business behavior of the agent.
+Agent Observatory is a small vertical-slice application with read-only error investigation and human-reviewed proposals.
 
 ```mermaid
 flowchart LR
@@ -9,8 +9,13 @@ flowchart LR
     Schedules[(Hangfire.InMemory volatile state)] <--> Scheduler[Hangfire server / UTC recurring job]
     Scheduler --> Execute[ExecuteAgent handler]
     API --> Execute
-    Execute --> Agent[IAgentRunner / TODO]
-    Agent -. future implementation .-> Factory[IFoundryAgentFactory]
+    Execute --> Agent[IAgentRunner / ErrorInvestigationRunner]
+    Agent --> Factory[IFoundryAgentFactory]
+    Agent --> Evidence[Bounded telemetry queries]
+    Evidence --> Monitored
+    Agent --> Webhook[Authenticated local Event Grid webhook]
+    Webhook --> Inbox[(Cosmos notification inbox)]
+    Inbox --> Human[Operator / private chat draft / handled comment]
     Factory -. Azure SDK credential .-> Foundry[Foundry AIProjectClient]
     Execute --> Cosmos[(Cosmos execution history)]
     Execute --> Hub[SignalR notifications]
@@ -23,7 +28,7 @@ flowchart LR
 
 ## Feature boundaries
 
-`Features/Agent` contains the Microsoft Agent Framework factory and the explicit placeholder runner. The factory creates an `AIAgent` through `AIProjectClient.AsAIAgent`; it is not called by the placeholder runner.
+`Features/Agent` contains the Microsoft Agent Framework factory and `ErrorInvestigationRunner`. The runner selects evidence before creating an `AIAgent` through `AIProjectClient.AsAIAgent`. The investigation model receives sanitized, bounded evidence as untrusted data and no tools. Only application code selects the destination, credentials, IDs and notification state.
 
 `Features/Executions` owns the shared execution handler, immutable records, Cosmos adapter, Minimal API and notification hub. HTTP and scheduled execution use the same handler, so persistence, correlation, error behavior and live events remain consistent.
 
@@ -36,7 +41,7 @@ flowchart LR
 ## Three separate data planes
 
 1. **Execution history:** Cosmos DB, partitioned by `/trigger` (`Endpoint` or `Schedule`). Records describe when work was requested, who requested it, its lifecycle and its correlation ID.
-2. **Job scheduling:** volatile Hangfire.InMemory storage with a stable recurring job ID. A dispatch can yield an execution with `NotImplemented`; Hangfire job success means the scaffold finished, not that an AI action occurred.
+2. **Job scheduling:** volatile Hangfire.InMemory storage with a stable recurring job ID. `Completed` means investigation finished (or successful empty queries skipped analysis), never that an incident was resolved.
 3. **Application diagnostics:** structured logs, requests, dependencies and exceptions sent to Application Insights through its connection string. Logs are not reconstructed into execution history.
 
 The browser receives only committed execution records. Full execution history is never inferred from transient SignalR delivery. Both the initial query and live table are bounded by `Executions:HistoryLimit`. The two-value partition scheme is for low-volume demonstration history; production retention/bucketing must address Cosmos logical-partition limits.
@@ -59,9 +64,17 @@ Startup validates the five-field UTC cron expression and registers exactly one r
 
 `AgentJob` sets `AutomaticRetry(Attempts = 0)` so agent failures are not automatically retried. This is **not** an exactly-once or at-most-once action guarantee: Hangfire can requeue interrupted work during cooperative shutdown while the process/storage remains alive. Agent/tool cancellation must remain cooperative, and actions must gain an explicit idempotency/recovery contract before implementation. Recurring occurrences can queue behind a long-running job; one worker serializes scheduled execution but does not block concurrent synchronous API requests. Keep the single-replica/single-active-revision policy: separate processes have independent schedules and would double dispatch. No administrative Hangfire dashboard is mapped.
 
-## Intentional limitations and next implementation
+## Read-only investigation contract
 
-The two TODO comments in `PendingAgentRunner` are the implementation boundary for instructions, tools, input selection, safety policy and run/session lifecycle. Azure infrastructure now deploys GPT-5.5 by default (configurable or disabled with `deployFoundryModel=false`); that provisioned deployment is not called by the placeholder runner.
+Both authorized API invocations and the UTC job query exceptions plus severity 3/4 traces within `InsightsTools:DefaultLookbackMinutes` before the execution's original start. Counts, fields, total evidence input, query calls and query timeouts use existing `InsightsTools` bounds; at least two calls are needed. Remaining calls retrieve exception details, not operation timelines. UTC timestamps, deterministic evidence references, actual severity, missing details and truncation accompany model-generated cause hypotheses, diagnostic/remediation steps, risks, verification and human questions. Empty successful queries skip both model and webhook; unavailable/failed queries, empty/uncited model responses and unacknowledged delivery fail the execution.
+
+The model has no remediation or HTTP tools. The application submits one `AgentOps.ErrorInvestigationProposed` Event Grid event through `LocalWebhookDelivery`, sharing the diagnostic sender's no-proxy/no-redirect/no-cookie transport. Socket destination is this process's loopback listener. Background delivery uses a concrete configured `AllowedHosts` entry and HTTPS forwarding for Container Apps, not an `HttpContext` or an external endpoint. The server-side webhook key is redacted from HTTP headers and never enters prompts, UI or stored events. The real webhook authenticates, applies payload bounds and writes an unhandled notification to Cosmos.
+
+Event ID is `investigation-{executionId}`. Hangfire injects `PerformContext`; before execution starts, the job stores a random execution ID in its `AgentOpsExecutionId` parameter. Shutdown requeues reuse that parameter and the durable execution's first persisted start/window/correlation. This avoids dependence on volatile job-ID reuse or timestamp serialization precision and keeps start time distinct from queue time. A completed execution or existing proposal skips repeat analysis/delivery. The webhook's topic/event-ID hash and create-if-absent persistence preserve comments and chat associations on redelivery. Timeout acknowledgement remains uncertain; a delivered proposal may coexist with a canceled/failed execution. There is no outbound retry or exactly-once claim. Separate executions can select overlapping errors. Execution-scoped and known agent/delivery log categories are filtered to reduce self-trigger feedback; untagged platform telemetry may still require operator review.
+
+Proposal text fits `Chat:MaxPromptLength` and discloses model/output clipping. Opening the notification reserves an owner-scoped chat and prefills its draft without sending anything; handling/comment updates remain explicit operator actions. Real fixes require a separate approved execution design.
+
+## Intentional limitations and deployment
 
 `azure/scripts/Deploy-All.ps1` separates resource provisioning from image build and activation. Bicep creates or reuses ACR, configures identity/telemetry/Cosmos/Foundry, and initially omits the app. ACR Tasks builds and pushes the image; the script verifies its digest, then redeploys Bicep with the app enabled and that immutable digest. Existing ACRs can be in another resource group/subscription and receive a managed-identity pull grant without changing their settings.
 

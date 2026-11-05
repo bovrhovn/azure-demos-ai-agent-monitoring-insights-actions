@@ -124,6 +124,36 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 .notification-heading { align-items: flex-end; }
 .notification-heading h1 { font-size: clamp(2.4rem, 4vw, 3.8rem); margin: 0; }
 .notification-heading .page-intro { max-width: 340px; font-size: 15px; }
+.notification-test-tools { margin-bottom: 26px; border: 1px solid #ccdce6; border-radius: 12px; background: #f3f7fa; overflow: hidden; }
+.notification-test-tools > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 26px; }
+.notification-test-tools .eyebrow { color: #42637b; font-size: 10px; margin: 0 0 6px; }
+.notification-test-tools h2 { font-size: 22px; letter-spacing: -.5px; margin: 0; }
+.notification-test-badge { flex-shrink: 0; color: #496376; border: 1px solid #c5d6e2; border-radius: 20px; padding: 5px 10px; font: 10px/1.6 var(--mono); }
+.notification-test-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #ccdce6; border-top: 1px solid #ccdce6; }
+.notification-test-card { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 24px 26px; background: var(--panel); margin: 0; }
+.notification-test-card-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.notification-test-icon { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; background: #fff3e8; color: #98531b; font: 23px/1 var(--mono); }
+.notification-test-icon.webhook { background: #eaf3fa; color: var(--accent); }
+.notification-test-card h3 { font-size: 18px; letter-spacing: -.3px; margin: 0; }
+.notification-test-card p { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 18px; max-width: 420px; }
+.notification-test-card label { display: block; font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+.notification-test-card input { width: 100%; min-width: 0; font: 13px/1.5 var(--sans); color: var(--ink); background: white; border: 1px solid #becbd4; border-radius: 6px; padding: 9px 12px; margin-bottom: 14px; }
+.notification-test-card input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.notification-test-button { display: inline-flex; align-items: center; justify-content: space-between; gap: 28px; min-height: 42px; border-radius: 7px; background: var(--accent); color: white; border-color: var(--accent); font-size: 12px; font-weight: 600; padding: 10px 16px; }
+.notification-test-button:hover:not(:disabled) { background: #005494; border-color: #005494; color: white; }
+.notification-test-button.secondary { color: var(--accent); background: #eef6fc; border-color: #b7d2e7; }
+.notification-test-button.secondary:hover:not(:disabled) { color: #004d7b; background: #dfedf8; border-color: #8cb8d8; }
+.notification-test-card small { margin-top: 12px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.notification-test-receipt { display: grid; gap: 5px; padding: 18px 26px; border-top: 1px solid #b8d7c8; background: #eff8f3; color: #22583e; font-size: 12px; overflow-wrap: anywhere; }
+.notification-test-receipt strong { font-size: 13px; }
+.notification-test-receipt code, .notification-test-receipt time { font-size: 10px; }
+@media (max-width: 620px) {
+    .notification-test-tools > header { padding: 18px; flex-direction: column; align-items: flex-start; gap: 10px; }
+    .notification-test-tools h2 { font-size: 20px; }
+    .notification-test-grid { grid-template-columns: minmax(0, 1fr); }
+    .notification-test-card, .notification-test-receipt { padding: 18px; }
+    .notification-test-button { width: 100%; }
+}
 .notification-inbox { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; box-shadow: 0 12px 36px #17233306; min-width: 0; }
 .notification-toolbar { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; padding: 26px; background: #f3f6f8; border-radius: 9px 9px 0 0; }
 .notification-toolbar label, .notification-dialog label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; }

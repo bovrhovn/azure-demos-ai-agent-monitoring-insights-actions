@@ -13,6 +13,8 @@ public static class RouteConstants
     public const string ChatSessions = "/ui/chat/sessions";
     public const string NotificationsPage = "/Notifications/Index";
     public const string Notifications = "/ui/notifications";
+    public const string NotificationTelemetryTest = "/tests/telemetry";
+    public const string NotificationWebhookTest = "/tests/webhook";
     public const string LegacyIndexPage = "/Index";
     public const string LegacyErrorPage = "/Error";
     public const string LegacySchedulesPage = "/Schedules";

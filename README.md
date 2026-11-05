@@ -2,7 +2,7 @@
 
 An ASP.NET Core **.NET 10 / C# Razor Pages** application for observing Application Insights and tracking Microsoft Foundry agent executions, on a schedule or through an authenticated Minimal API.
 
-**Automated execution remains an infrastructure scaffold.** Scheduled/API runs are recorded as `NotImplemented`; they do not call a model or perform remediation. The separate **Agent chat** workspace invokes the configured Foundry model for text-only conversations, with no action tools.
+**Automated investigation is read-only and human-in-the-loop.** Scheduled/API runs query bounded Application Insights exceptions and error/critical traces, retrieve exception details, and ask the configured Foundry model for grounded diagnostic/remediation proposals. The application posts proposals through its authenticated Event Grid webhook into the durable notification inbox. Select a proposal to prefill a private chat; only you send it or mark it handled with a comment. Nothing executes remediation automatically. Successful empty queries skip the model and notification.
 
 ## What is included
 
@@ -14,7 +14,7 @@ An ASP.NET Core **.NET 10 / C# Razor Pages** application for observing Applicati
 | Application logs | Separate Application Insights trace viewer; not used as execution storage |
 | Agent chat | Private Cosmos-backed sessions, historical context, model-labelled replies and message copying |
 | Identity | Microsoft Entra ID OIDC for the web app; validated bearer tokens and role/scope authorization for the API |
-| Agent integration | Microsoft Agent Framework + `AIProjectClient` behind `IFoundryAgentFactory`; behavior explicitly deferred |
+| Agent integration | Microsoft Agent Framework + `AIProjectClient` behind `IFoundryAgentFactory`; read-only investigation and human-review proposals |
 | Persistence | Cosmos DB emulator connection string in Development; Cosmos HTTPS endpoint + `DefaultAzureCredential` outside Development |
 | Background jobs | Official Hangfire ASP.NET Core server with Hangfire.InMemory process-local storage |
 | Telemetry | Structured `ILogger` events exported to Application Insights using its connection string |
@@ -78,7 +78,7 @@ Open **Agent chat** from the menu with an operator account to create a session a
 
 Hangfire queues and scheduling state are **volatile** and lost on restart. The configured UTC recurring job is re-registered at startup; missed runs are not recovered across restarts. Failed agent jobs have no automatic retries. Cosmos execution history remains durable. The API still runs synchronously through the same execution handler as the background job. No Hangfire administrative dashboard is exposed.
 
-Scheduling remains on the shared `ExecuteAgent` path. Cosmos ETags atomically reserve each UTC occurrence before running it. Dispatch is **at-most-once**, with no automatic action retries: a crash after reservation can lose that occurrence. Missed ticks coalesce to one run, and a bounded lease prevents overlapping dispatch. See [architecture](docs/architecture.md) for the cancellation and single-replica boundary.
+Scheduling remains on the shared `ExecuteAgent` path. Hangfire shutdown requeues reuse an execution ID stored in the job parameters and the original durable UTC evidence window. The webhook deduplicates proposal IDs, but there is no exactly-once execution guarantee, occurrence lease or automatic delivery retry. Different runs may find overlapping evidence. See [architecture](docs/architecture.md) for cancellation and single-replica boundaries.
 
 Without `Insights:ResourceId`, the overview and logs show a configuration notice, not fabricated metrics. Authentication is **never bypassed** for local browsing.
 
@@ -97,7 +97,7 @@ Browser verification is opt-in; see [testing](docs/testing.md) for Chromium/Edge
 
 Start with [azure/README.md](azure/README.md). `azure\scripts\Deploy-All.ps1` provisions infrastructure, builds/pushes the container in ACR Tasks, deploys the digest-pinned image and waits for readiness. Omit `-AcrName` to create a registry or provide an existing one. Reuse Cosmos with `-CosmosAccountName` and `-CosmosResourceGroup`; private connectivity preserves a shared account's network settings. `Initialize-EntraApplication.ps1` can create a dedicated web/API registration and configure the deployed callbacks. Use `-WhatIf` for a local plan without Azure changes. Normal local development/test scripts never deploy Azure resources.
 
-The Bicep provisions Container Apps, ACR/access, a user-assigned identity, Cosmos DB with local/key authentication disabled and execution/chat NoSQL containers, Key Vault, workspace-based Application Insights, and a Foundry account/project. It deploys **GPT-5.5** by default; model, version, SKU, capacity and deployment name are configurable. Chat uses that deployment; automated placeholder runs still make no model calls.
+The Bicep provisions Container Apps, ACR/access, a user-assigned identity, Cosmos DB with local/key authentication disabled and execution/chat NoSQL containers, Key Vault, workspace-based Application Insights, and a Foundry account/project. It deploys **GPT-5.5** by default; model, version, SKU, capacity and deployment name are configurable. Chat and automated investigations use the configured deployment and can incur model charges.
 
 This demo intentionally stays at **one replica** for in-process SignalR and cookie-key storage. Network isolation, persistent encrypted cookie keys, distributed notifications, idempotent actions, retention and recovery must be designed before a production rollout.
 

@@ -58,7 +58,7 @@ blocked and the UI offers **Retry deletion**. The session document is removed
 only after all its messages have been deleted. Deleting a missing or another
 user's session returns 404.
 
-## Invoke the agent scaffold
+## Invoke a read-only error investigation
 
 Obtain an access token from an authorized Entra client for this app's audience. Use either the delegated `api://<client-id>/Agent.Run` scope or an app-only token with the operator role. Do not substitute an ID token or a Microsoft Graph access token.
 
@@ -69,22 +69,22 @@ Invoke-RestMethod 'https://localhost:5080/api/executions' `
     -Headers @{ Authorization = "Bearer $token" }
 ```
 
-No request body or caller-supplied prompt is accepted yet. The endpoint executes the shared handler synchronously and returns HTTP 200 with a durable record:
+No request body or caller-supplied prompt is accepted. The endpoint executes the shared handler synchronously and returns HTTP 200 with a durable record:
 
 ```json
 {
   "id": "generated-execution-id",
   "trigger": "Endpoint",
-  "status": "NotImplemented",
+  "status": "Completed",
   "startedAt": "2026-10-19T10:00:00+00:00",
   "completedAt": "2026-10-19T10:00:00+00:00",
   "requestedBy": "authenticated-caller-object-id",
   "correlationId": "trace-id",
-  "summary": "Agent behavior is pending implementation. No model or action was invoked."
+  "summary": "Read-only investigation proposal delivered to the notification inbox for human review. No remediation was executed."
 }
 ```
 
-HTTP success means the scaffold handler ran and persisted its outcome. It **does not** mean that an AI action succeeded. Always inspect `status`.
+HTTP success means the read-only investigation finished and persisted its outcome. `Completed` means a human-review proposal was delivered, was already present, or successful empty evidence queries skipped the model/webhook. It **does not** mean an incident was resolved or a remediation ran. Query/model/delivery failures are failures, never empty evidence. Always inspect `status` and `summary`. Proposals use the existing authenticated Event Grid webhook and remain unhandled until an operator chooses otherwise.
 
 Missing/invalid tokens return 401; authenticated callers without permission return 403. The configured fixed-window rate limiter returns 429. Unexpected failures return safe Problem Details with a trace ID; details remain in structured application logs.
 
@@ -97,7 +97,7 @@ traces, newest first; it does not navigate the entire archive. Defaults come fro
 return 400; a page beyond the last available page is clamped to the last page.
 Unknown UI trigger values return 400. Unconfigured telemetry returns 503 Problem
 Details; query failures return safe 500 Problem Details, never synthetic metrics.
-Stored statuses are `Running`, `NotImplemented`, `Failed` and `Canceled`.
+New statuses are `Running`, `Completed`, `Failed` and `Canceled`; historical `NotImplemented` records remain readable.
 
 ## SignalR
 

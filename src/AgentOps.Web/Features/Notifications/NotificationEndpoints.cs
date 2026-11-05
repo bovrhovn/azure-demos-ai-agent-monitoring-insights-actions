@@ -81,8 +81,40 @@ public static class NotificationEndpoints
                 return Results.Conflict(new { title = "This notification or conversation has an operation in progress. Please retry." });
             }
         }).RequireAuthorization(Policies.Operate).RequireRateLimiting("chat");
+        group.MapPost(RouteConstants.NotificationTelemetryTest, (NotificationTestService service) =>
+        {
+            try { return Results.Ok(service.EmitTelemetry()); }
+            catch (NotificationTestUnavailableException exception)
+            {
+                return Results.Problem(title: exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        }).RequireAuthorization(Policies.Operate).RequireRateLimiting("notification-tests");
+        group.MapPost(RouteConstants.NotificationWebhookTest, async (TestWebhook input, HttpContext http,
+            NotificationTestService service, IOptions<NotificationOptions> options, ILogger<NotificationTestService> logger) =>
+        {
+            if (string.IsNullOrWhiteSpace(input.Message) || input.Message.Length > options.Value.MaxTestMessageLength)
+                return Results.BadRequest(new { title = $"Enter a test message of at most {options.Value.MaxTestMessageLength} characters." });
+            try { return Results.Ok(await service.SendWebhookAsync(http.Request, input.Message.Trim(), http.RequestAborted)); }
+            catch (NotificationTestUnavailableException exception)
+            {
+                return Results.Problem(title: exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            catch (HttpRequestException exception)
+            {
+                logger.LogWarning(exception, "Local webhook test was not acknowledged.");
+                return Results.Problem(title: "The local webhook did not acknowledge the test. Refresh the inbox before retrying.",
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+            catch (OperationCanceledException exception) when (!http.RequestAborted.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "Local webhook test timed out.");
+                return Results.Problem(title: "The local webhook test timed out. It may have been saved; refresh the inbox before retrying.",
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
+        }).RequireAuthorization(Policies.Operate).RequireRateLimiting("notification-tests");
         return endpoints;
     }
 
     public sealed record SetHandled(bool IsHandled, string? Comment, bool Confirmed = false);
+    public sealed record TestWebhook(string? Message);
 }

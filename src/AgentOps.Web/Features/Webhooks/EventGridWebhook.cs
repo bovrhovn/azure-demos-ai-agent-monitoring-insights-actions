@@ -83,8 +83,7 @@ public static class EventGridWebhook
                     ? id.GetString() : null;
                 var topic = item.TryGetProperty("topic", out var source) && source.ValueKind == JsonValueKind.String
                     ? source.GetString() : null;
-                var notificationId = string.IsNullOrWhiteSpace(eventId) ? Guid.NewGuid().ToString("N")
-                    : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new[] { topic, eventId }))));
+                var notificationId = string.IsNullOrWhiteSpace(eventId) ? Guid.NewGuid().ToString("N") : NotificationId(topic, eventId);
                 var message = item.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object &&
                     data.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString()! : "";
                 await notifications.CreateAsync(new(notificationId, item.GetRawText(), message, receivedDate), cancellationToken);
@@ -92,5 +91,9 @@ public static class EventGridWebhook
             logger.LogInformation("Event Grid webhook saved {EventCount} notifications; no actions were executed.", events.GetArrayLength());
             return Results.Ok();
         }
+
     }
+
+    internal static string NotificationId(string? topic, string eventId) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new[] { topic, eventId }))));
 }

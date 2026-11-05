@@ -5,17 +5,20 @@ Generated: 2026-10-21
 
 ## 1. Project Overview
 
-Deploy the current working-tree application to the existing agentops-web Container App.
-Preserve existing runtime settings, identity, ingress, probes and scale.
-The current approved update builds a new immutable image and rotates only the webhook
-Key Vault secret, its application reference, and the matching Event Grid delivery header.
+Deploy the current working-tree application, including the scheduled error investigation
+runner and human-review notification proposals, to the existing agentops-web Container App.
+Preserve existing runtime settings, secrets, identity, ingress, probes and scale.
+The current approved update builds a new immutable image and updates only the application
+revision. The notifications container already exists. Do not provision resources, rotate
+credentials, modify Event Grid, or invoke production diagnostic/test actions.
 
 ## 2. Approved Target
 
 - Subscription: MCAPS Azure Demos (466e1dc9-e0b4-4178-9da3-6a24d4df5a13).
 - Resource group: rg-aiagent; location: swedencentral.
 - User confirmed this target and implementation/deployment on 2026-10-21.
-- User separately approved deletion of agentops-heto2js6mjyf2-pg after live readiness.
+- Current image-only rollout explicitly authorized on 2026-11-05; no resource
+  deletions, credential rotations or production test-data generation are authorized.
 - Never write credential values into this record.
 
 ## 3. Components
@@ -29,8 +32,8 @@ Key Vault secret, its application reference, and the matching Event Grid deliver
 recipe.type: azcli
 
 Use ACR Tasks and a digest-pinned image with az containerapp update --image.
-Do not reprovision infrastructure or recreate Event Grid subscriptions. Rotate only the
-explicitly approved webhook credential; preserve the confidential Entra credential.
+Do not reprovision infrastructure or recreate Event Grid subscriptions. Preserve every
+credential. No infrastructure deployment is authorized for this update.
 
 ## 5. Architecture
 
@@ -38,11 +41,11 @@ Reuse agentops-web and its existing managed environment, identity, Key Vault,
 private network, telemetry and Foundry resources.
 Reuse bovrhovncr and bovrhovncdb in rg-containers without changing account settings.
 Retain the agentops Cosmos database and executions container partitioned by /trigger.
-Add one Event Grid custom topic and one webhook event subscription.
-Store webhook-api-key in Key Vault; Container Apps resolves it with the existing identity
+Preserve the existing Event Grid custom topic and webhook event subscription.
+Keep webhook-api-key in Key Vault; Container Apps resolves it with the existing identity
 and exposes Webhook__ApiKey via a secret reference.
 Event Grid sends X-Api-Key as a secret static delivery header, including during validation.
-Register the subscription only after app readiness and require Succeeded validation.
+Preserve the existing Succeeded subscription without re-registration.
 Normal notifications return HTTP 200 without executing agents.
 No PostgreSQL resources or Hangfire database environment variables are deployed.
 
@@ -50,17 +53,183 @@ No PostgreSQL resources or Hangfire database environment variables are deployed.
 
 Existing resources retain their SKUs, locations and counts.
 The app remains one replica with 0.5 CPU and 1 GiB RAM.
-Only the Event Grid topic/subscription are net-new top-level resources.
-Event Grid quota CLI returned BadRequest (unsupported); live inventory has zero topics in
-Sweden Central. Official Event Grid limits allow 100 custom topics per subscription/region
-and 500 subscriptions per topic, so totals of one topic and one subscription are within limits.
+No new resources or capacity are required for this image-only update.
 ARM provider validation and what-if passed against the confirmed subscription.
 Inherited caller Owner plus existing ACR Tasks/repository roles cover deployment/build.
-Use incremental deployment, never complete-mode deletion.
+Use only the Container Apps image/revision update; do not apply infrastructure templates.
 Preserve the existing confidential Entra credential without reading or rotating it.
-Delete only the individually approved PostgreSQL server after the new version is healthy.
+Historical PostgreSQL cleanup is complete; no deletion is part of this update.
 
 ## 7. Validation Proof
+
+### Scheduled error investigations image-only update (2026-11-05)
+
+- Explicit approval: build the current disk tree, including new untracked source files,
+  and update only the existing production application's image/revision.
+- All validation checks pass requires:
+  - Core Validation: CLI/authentication, API-version-matched live snapshot Bicep
+    compilation, ARM provider validation and what-if with zero changes.
+  - Docker Build: existing ACR BuildKit task, current disk context, unique tag,
+    ABAC caller authentication and independently verified digest.
+  - Azure Policy Validation: scoped policy review and ARM provider validation.
+  - Fresh Release suite with browser checks, frontend tests/build, changed-source
+    formatting verification and existing infrastructure tests.
+  - Static role declarations and production prerequisite inspection; scoped live
+    role verification again after deployment.
+- Fresh validation completed on 2026-11-05; previous release proof was not reused.
+- Managed Release suite with AGENTOPS_BROWSER_TESTS=true and --no-restore:
+  271 passed, 5 explicitly opt-in skipped (4 Cosmos emulator, 1 live Foundry/Insights),
+  zero failures. Frontend: 13 passed; Vite production build succeeded.
+- Changed existing/new C# files passed dotnet format --verify-no-changes --no-restore;
+  intentionally deleted legacy paths were excluded. Release build: zero warnings/errors.
+  Pester: 31 passed, zero skipped/failed. Main Bicep compilation and diff check passed.
+- Core validation helper: OVERALL PASS, what-if Create 0, Modify 0, Delete 0,
+  using an API-2025-01-01 raw snapshot. Initial CLI-extension-shaped snapshot failed
+  schema validation; replacing it with the API-matched GET resolved the error.
+- Scoped Azure CLI policy list returned no assignments; provider/policy validation passed.
+  Azure MCP used a different identity and received 403; the authenticated CLI succeeded
+  without any permission changes.
+- Current disk build context includes ErrorInvestigationRunner.cs, LocalWebhookDelivery.cs
+  and NotificationTestService.cs; package lock exists. Secret filename inspection passed.
+  Existing .dockerignore excludes secret sources, dependency/output and repository state.
+- ACR BuildKit run dt1c succeeded at 2026-11-05T12:17:22Z with ABAC caller authentication.
+  Unique tag scheduled-20261105121614, independently verified digest:
+  sha256:e0be7bfbc54bd563fc2b4c23fb153a01aa6f266a25e85fc2a321cc09111170ff.
+- Static roles verified: registry ABAC Repository Reader, vault Secrets User,
+  Insights Monitoring Reader, project Foundry User, database Cosmos Data Contributor.
+- Production prerequisites confirmed: Foundry project observatory Succeeded;
+  configured gpt-5-mini-544625 deployment Succeeded; configured Insights resource Succeeded.
+  InsightsTools enabled, MaxToolCalls defaults to 6, bounded 60-minute lookback;
+  executions/chats/notifications containers present with expected partition keys.
+  Existing identity grants match the above scopes. Concrete AllowedHosts, ingress
+  forwarding enabled and runtime image listener port 8080 support loopback delivery.
+- No unresolved validation failures or required out-of-scope configuration changes.
+- Baseline confirmed: agentops-web--inbox-20261105-111724, image
+  sha256:be0b670c9ee435065c0c0cbaebd065f022fac582e6ec5a8f8d6e32a77dd3f050.
+- Preserve enabled UTC schedule */15 * * * *, all credentials, roles, identity,
+  networking, probes, scale, Event Grid subscriptions and existing resource counts.
+- No synthetic production events, automated chat sends, handling changes or fixes.
+
+#### Scheduled-investigation production rollout verification
+
+- azure-deploy invoked only after fresh azure-validate completed with Validated status.
+  Existing subscription, Sweden Central group/environment, propagated ABAC registry
+  reader and unchanged baseline confirmed before the image-only update.
+  No AZD/provisioning step applies to this existing pure-CLI image-only rollout.
+- Image-only update started 2026-11-05T12:20:51Z; revision
+  agentops-web--investigate-20261105-122051 became Healthy with one ready replica,
+  zero restarts and 100% traffic. It is the only active revision.
+- Image: bovrhovncr.azurecr.io/agent-observatory@sha256:e0be7bfbc54bd563fc2b4c23fb153a01aa6f266a25e85fc2a321cc09111170ff.
+- Endpoint: https://agentops-web.ambitiouspebble-72f10e6e.swedencentral.azurecontainerapps.io
+- All three health endpoints returned HTTP 200; served JavaScript and CSS exactly
+  match current local build hashes. Webhook without credentials returned 401.
+  Schedules, Notifications and both diagnostic actions require sign-in (302).
+- API-version-matched before/after comparison confirms unchanged identity, tags,
+  configuration, managed environment, workload profile and runtime template except
+  image/revisionSuffix. Secret references normalize absent versus empty value.
+  Credentials were neither retrieved nor changed.
+- Postdeployment scoped live role verification passed for principal
+  153fe6f0-ee4a-4b1d-b159-906518a8a245: registry Repository Reader, vault Secrets User,
+  Insights Monitoring Reader, project Foundry User, database Cosmos Data Contributor.
+  Event Grid subscription agent-webhook remains Succeeded and was not modified.
+- Console metadata confirms actual HTTP listener [::]:8080 and registration of
+  insights-agent using the unchanged enabled UTC cron */15 * * * *.
+- Rollback retained: agentops-web--inbox-20261105-111724 (inactive, Healthy), image
+  bovrhovncr.azurecr.io/agent-observatory@sha256:be0b670c9ee435065c0c0cbaebd065f022fac582e6ec5a8f8d6e32a77dd3f050.
+- Natural scheduled execution observed at 2026-11-05T12:30:11Z; real exception and
+  severity-filtered trace queries both returned zero rows without truncation.
+  Execution finished Completed at 12:30:14Z, after terminal Cosmos persistence.
+  This verifies the active real runner rather than the former NotImplemented path.
+- The empty-evidence branch correctly invoked neither Foundry nor the webhook.
+  Production model inference and proposal delivery are therefore not end-to-end
+  verified; management-plane model/project readiness and roles are verified, and the
+  actual authenticated loopback delivery contract passed local production-mode tests.
+  Authenticated production UI is also not verified. No synthetic errors or events
+  were generated to force those paths.
+- Distinct scheduled-* evidence files are persisted in the existing session files
+  directory; application source, index, branches and Squad state were not modified.
+
+### Operator inbox diagnostic controls image-only update (2026-11-05)
+
+- Explicit user request: deploy the current on-disk application to existing production
+  rg-aiagent/agentops-web in Sweden Central, MCAPS Azure Demos.
+- Scope: image/revision update only; preserve secrets, environment, managed identity,
+  ingress, networking, probes, roles, Event Grid and one-replica scaling.
+- All validation checks pass requires:
+  - Core validation: CLI/authentication, compile an API-version-matched live app
+    snapshot, ARM provider validation and what-if with no resource changes.
+  - Docker build: existing BuildKit ACR task against the current on-disk source,
+    unique tag, ABAC caller authentication and independently verified digest.
+  - Azure Policy validation through scoped ARM provider validation.
+  - Full managed Release suite with browser tests enabled; frontend tests/build.
+  - Static role declaration verification and post-deployment scoped live verification.
+- Fresh azure-validate workflow restarted using its supported invocation without
+  CompletedStep; old success is not reused.
+- Full Release regression suite with AGENTOPS_BROWSER_TESTS=true and --no-restore:
+  254 passed, 5 explicitly opt-in Cosmos/live tests skipped, zero failures.
+- Fresh frontend tests: 13 passed; Vite production build succeeded. Release solution
+  build --no-restore succeeded with zero warnings/errors. Pester: 31 passed.
+- Core validate-deployment.ps1 on diagnostics-app-validation.bicep passed all checks:
+  CLI/authentication, Bicep compilation, ARM provider/policy validation and what-if
+  Create 0, Modify 0, Delete 0. Snapshot is validation-only and never deployed.
+- Repository main.bicep compilation and git diff --check passed.
+- Build context inspection found no .env variants, private-key/certificate files,
+  .npmrc or NuGet.Config outside excluded dependency/output directories. Existing
+  .dockerignore excludes Git, Azure state, Squad, build outputs and secret formats.
+  The current untracked NotificationTestService.cs was present in the disk context.
+- Existing BuildKit ACR run dt1b succeeded on 2026-11-05T11:12:51Z using caller
+  authentication for ABAC. Unique tag diagnostics-20261105111144-a8e25a4;
+  registry independently confirms digest
+  sha256:be0b670c9ee435065c0c0cbaebd065f022fac582e6ec5a8f8d6e32a77dd3f050.
+- Static roles verified unchanged: ABAC Repository Reader on the registry,
+  Key Vault Secrets User on the vault, Monitoring Reader on Insights, Foundry User
+  on the project and Cosmos Data Contributor scoped to the agentops database.
+- No validation failures remain; no source, credential or infrastructure changes
+  were necessary.
+- Rollback reference verified live before validation:
+  agentops-web--ui-20261105-092342,
+  bovrhovncr.azurecr.io/agent-observatory@sha256:11cdaedb04b71c2a91141b4f54367ff169ece1a22588d923c207129138599350.
+
+### Notification inbox and mixed telemetry update (2026-11-05)
+
+- User confirmed MCAPS Azure Demos (466e1dc9-e0b4-4178-9da3-6a24d4df5a13),
+  rg-aiagent/agentops-web, Sweden Central, for the current on-disk application.
+- Approved provisioning only the missing agentops/notifications container on bovrhovncdb
+  in rg-containers. Preserve all existing data, resources, secrets, configuration,
+  permissions and single-replica scaling. Preserve unrelated staged/index changes.
+- All validation checks pass:
+  - Core validation: CLI/authentication, Bicep compilation, ARM provider validation and
+    what-if for an API-version-matched application snapshot and the isolated container.
+  - Docker build: existing BuildKit ACR task, immutable tag and independently verified digest.
+  - Azure Policy validation: ARM provider validation of both scoped templates.
+  - Frontend and Release regression checks, including browser verification.
+  - Static role verification and live managed-identity role confirmation.
+- 2026-11-05T09:20Z validation proof:
+  - `npm test --prefix src\AgentOps.Web`: 13 passed; production Vite build succeeded.
+  - `dotnet test AgentOps.slnx --configuration Release` from src, with browser tests:
+    247 passed, 5 opt-in Cosmos/live tests skipped, zero failures.
+  - Initial regression found a request sample using `myapiKey`; the test resolver now
+    supports that alias and rejects unresolved variables. All 30 webhook tests passed
+    independently and the complete Release suite subsequently passed.
+  - `Invoke-Pester -Path .\azure\tests -CI`: 31 passed, zero failures.
+  - Repository main.bicep compilation and `git diff --check` passed.
+  - `validate-deployment.ps1` for the API-version-matched application snapshot:
+    OVERALL PASS, Create 0, Modify 0, Delete 0. Snapshot is validation-only.
+  - `validate-deployment.ps1` for the isolated notifications template: OVERALL PASS.
+    Resource-level JSON what-if confirms exactly one Create:
+    bovrhovncdb/agentops/notifications. No modifications or deletions.
+  - Both scoped templates passed ARM provider/policy validation.
+  - ACR BuildKit task dt1a succeeded; image tag deploy-20261105091820-a8e25a4.
+    Manifest independently verified as
+    sha256:11cdaedb04b71c2a91141b4f54367ff169ece1a22588d923c207129138599350.
+  - Earlier dt19 compiled successfully but push lacked ABAC caller authentication.
+    Retrying with the repository's `--source-acr-auth-id [caller]` resolved it without
+    changing roles. Windows log-output encoding was bypassed using downloaded logs.
+  - Static role declarations verified: database-scoped Cosmos Data Contributor,
+    ABAC Container Registry Repository Reader, Key Vault Secrets User, Monitoring
+    Reader and project-scoped Foundry User. Existing live grants match.
+  - No secrets, permissions, infrastructure settings, SKUs or resource counts need
+    changes beyond the explicitly approved new notifications container.
 
 ### Production redeploy and webhook rotation (2026-11-04, current request)
 
@@ -170,13 +339,88 @@ Validated by: azure-validate skill, 2026-10-21.
 
 ## 8. Execution
 
-- Implementation and local tests complete.
-- Validate Azure changes and permissions.
-- Provision webhook secret/topic, build image, deploy app and verify readiness.
-- Register Event Grid and verify authenticated handshake and delivery.
-- Remove the approved PostgreSQL server and verify final resource inventory.
+- Fresh azure-validate workflow completed with current proof and status Validated.
+- azure-deploy invoked; azcli predeploy checklist completed for the explicitly confirmed
+  existing subscription, resource group, location and managed environment.
+- AZD initialization/provisioning and new-role propagation are not applicable:
+  no infrastructure or role changes; existing ABAC Repository Reader verified before rollout.
+- Existing BuildKit ACR task built current on-disk source; digest independently verified.
+- Applied only az containerapp update --image with a unique revision suffix.
+- Verified sole active healthy revision, readiness, security boundaries, assets and
+  preservation of non-image settings and runtime roles. No live test signal was sent.
 
 ## 9. Live Deployment Evidence
+
+### Operator inbox diagnostic controls image-only update (2026-11-05)
+
+- Final live verification at 2026-11-05T11:21Z against the explicitly approved existing target.
+- URL: https://agentops-web.ambitiouspebble-72f10e6e.swedencentral.azurecontainerapps.io.
+- ACR BuildKit run dt1b succeeded; tag diagnostics-20261105111144-a8e25a4.
+- Digest-pinned image:
+  bovrhovncr.azurecr.io/agent-observatory@sha256:be0b670c9ee435065c0c0cbaebd065f022fac582e6ec5a8f8d6e32a77dd3f050.
+- Revision agentops-web--inbox-20261105-111724 is the sole active revision,
+  Healthy, Provisioned, RunningAtMaxScale, one ready replica, zero container restarts,
+  100 percent traffic. latestReadyRevisionName matches; application state Succeeded.
+- /health, /health/live and /health/ready all return HTTP 200 after rollout.
+- Public JS and CSS exactly match the locally built/tested assets:
+  - /js/app.js SHA-256 DDD102E9E5E57D30EB0A9BF0C3C9AA39848454FED82FE4C863A5C70CB5A37BA0.
+  - /css/site.css SHA-256 B1B70CCF288699F78606D2B594FFEA0B034ED48ED05D8C76B4E0509B64EB24FF.
+  - Verified Generate telemetry, Send test webhook and Send a signal. Follow the
+    evidence. labels plus notification-test-tools styles in the served assets.
+- Unauthenticated webhook POST returns 401. Both operator diagnostic POST routes
+  redirect 302 to Microsoft sign-in; redirects were not followed. No authenticated
+  diagnostic action, synthetic notification, webhook delivery or telemetry test was sent.
+- API-version-matched before/after comparison confirms all non-image configuration
+  unchanged, including environment variables/secret references, identity, registry,
+  ingress, probes, CPU/memory, scale, tags and managed environment. No normalization
+  of settings was needed; only image and revisionSuffix were excluded.
+- Existing ARM role assignments are unchanged and verified at individual resource
+  scopes: Container Registry Repository Reader, Monitoring Reader, Key Vault Secrets
+  User and Foundry User. Cosmos Data Contributor remains scoped to /dbs/agentops;
+  notifications container exists with /id partition key.
+- Event Grid topic/subscription configuration checked before/after is unchanged;
+  subscription remains Succeeded. No Event Grid or credential changes were made.
+- Validation: 254 managed tests passed, 5 opt-in Cosmos/live tests skipped;
+  13 frontend tests and 31 Pester tests passed. Release build: zero warnings/errors.
+- Authenticated production UI and diagnostic delivery were not exercised without a
+  user session or separate permission to emit test signals. Local browser coverage
+  passed and deployed asset bytes were independently matched.
+- Rollback reference retained:
+  agentops-web--ui-20261105-092342,
+  bovrhovncr.azurecr.io/agent-observatory@sha256:11cdaedb04b71c2a91141b4f54367ff169ece1a22588d923c207129138599350.
+- Fresh workflow state: .azure/validate-status.json completedStep UpdateStatus.
+  Distinct diagnostics-* evidence snapshots are in the existing session files directory.
+  No application source or Git index changes were made by the deployment.
+
+### Notification inbox and mixed telemetry update (2026-11-05)
+
+- Completed at 2026-11-05T09:27Z against the user-confirmed production target.
+- Incremental deployment agentops-notifications-20261105 succeeded, creating only
+  bovrhovncdb/agentops/notifications. Verified /id partition key and repository indexing
+  policy; no existing containers, data, throughput or account settings were changed.
+- ACR BuildKit task dt1a succeeded. Deployed the digest-pinned image
+  bovrhovncr.azurecr.io/agent-observatory@sha256:11cdaedb04b71c2a91141b4f54367ff169ece1a22588d923c207129138599350.
+- Revision agentops-web--ui-20261105-092342 is Healthy, RunningAtMaxScale, one
+  replica, and receives 100 percent traffic. It is the only active revision.
+- URL: https://agentops-web.ambitiouspebble-72f10e6e.swedencentral.azurecontainerapps.io.
+- /health, /health/live and /health/ready all return HTTP 200 Healthy.
+- Live browser bundle exactly matches the tested local production bundle:
+  SHA-256 83F6C0719A13373768A8A1CEDBCA2ECD2CEA1D31D18BDB112C416DB65F1CB767.
+  New query-window and trace-timeline styles are present in the deployed stylesheet.
+- Unauthenticated webhook POST returns HTTP 401. No production test notification
+  was inserted and no webhook or Entra credential was read, changed or rotated.
+- API-version-matched snapshots confirm image/revision are the only meaningful app
+  changes. CLI serialization added an empty value beside an unchanged webhook secret
+  reference; comparison normalized that missing-versus-empty representation.
+  All secret references, environment settings, identity, network, registry, probes,
+  scale, tags and managed environment remain unchanged.
+- Post-deployment live grants remain correct: Container Registry Repository Reader,
+  Key Vault Secrets User, Monitoring Reader, Foundry User, and database-scoped
+  Cosmos Data Contributor covering executions, chats and notifications.
+- Validation: Release solution including browser tests 247 passed, 5 opt-in/live
+  tests skipped; frontend 13 passed; infrastructure/orchestration 31 passed.
+- User-authenticated production inbox/chat interaction was not exercised; browser
+  behavior was verified against the test host and the deployed bundle was matched.
 
 ### UI redeploy and webhook rotation (2026-11-04, current request)
 

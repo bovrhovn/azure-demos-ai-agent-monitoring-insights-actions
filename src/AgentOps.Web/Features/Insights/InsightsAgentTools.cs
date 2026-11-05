@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Infrastructure.Options;
 using Azure;
@@ -17,7 +19,8 @@ public sealed record TelemetryToolResult(string Status, string ResourceId, DateT
     IReadOnlyList<TelemetryToolRow> Rows, bool Truncated = false, string? Error = null);
 
 public sealed class InsightsAgentTools(ITelemetryQuery query, InsightsOptions insights, InsightsToolOptions options,
-    TimeProvider time, IReadOnlyList<TelemetryEvidence> previousEvidence, ILogger logger)
+    TimeProvider time, IReadOnlyList<TelemetryEvidence> previousEvidence, ILogger logger,
+    DateTimeOffset? windowEnd = null, bool excludeAgentTelemetry = false)
 {
     private readonly Dictionary<string, TelemetryEvidence> evidence = previousEvidence
         .Where(item => item.ResourceId == insights.ResourceId).TakeLast(options.MaxEvidenceReferences)
@@ -57,12 +60,12 @@ public sealed class InsightsAgentTools(ITelemetryQuery query, InsightsOptions in
     private Task<TelemetryToolResult> RecentAsync(TelemetryQueryKind kind, int? lookbackMinutes, int? count,
         string? service, int? severity, CancellationToken cancellationToken)
     {
-        var end = time.GetUtcNow();
+        var end = windowEnd ?? time.GetUtcNow();
         var minutes = lookbackMinutes ?? options.DefaultLookbackMinutes;
         if (minutes < 1 || minutes > options.MaxLookbackMinutes)
             return Task.FromResult(Failure("invalid_arguments", $"Query was not executed. Lookback must be 1..{options.MaxLookbackMinutes} minutes; this is not an empty telemetry result."));
         return ExecuteAsync(new(kind, end.AddMinutes(-minutes), end, count ?? options.DefaultCount,
-            Service: service, MinimumSeverity: severity), cancellationToken);
+            Service: service, MinimumSeverity: severity, ExcludeAgentTelemetry: excludeAgentTelemetry), cancellationToken);
     }
 
     private Task<TelemetryToolResult> ReferencedAsync(string reference, TelemetryQueryKind kind, int? count,
@@ -74,7 +77,7 @@ public sealed class InsightsAgentTools(ITelemetryQuery query, InsightsOptions in
             kind == TelemetryQueryKind.Operation && string.IsNullOrWhiteSpace(item.OperationId))
             return Task.FromResult(Failure("invalid_reference", "The referenced record does not have the identifier required for this query."));
         return ExecuteAsync(new(kind, item.Start, item.End, kind == TelemetryQueryKind.ExceptionDetails ? 1 : count ?? options.MaxRows,
-            ItemId: item.ItemId, OperationId: item.OperationId), cancellationToken);
+            ItemId: item.ItemId, OperationId: item.OperationId, ExcludeAgentTelemetry: excludeAgentTelemetry), cancellationToken);
     }
 
     private async Task<TelemetryToolResult> ExecuteAsync(TelemetryQueryRequest request, CancellationToken cancellationToken)
@@ -97,7 +100,10 @@ public sealed class InsightsAgentTools(ITelemetryQuery query, InsightsOptions in
             {
                 var existing = evidence.Values.FirstOrDefault(item => item.ResourceId == insights.ResourceId &&
                     item.Type == row.Type && item.ItemId == row.ItemId && item.Timestamp == row.Timestamp);
-                var reference = existing ?? new TelemetryEvidence(Guid.NewGuid().ToString("N"), insights.ResourceId,
+                var referenceId = windowEnd is null ? Guid.NewGuid().ToString("N") :
+                    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
+                        new { insights.ResourceId, row.Type, row.ItemId, row.Timestamp }))));
+                var reference = existing ?? new TelemetryEvidence(referenceId, insights.ResourceId,
                     row.Type, row.ItemId, row.OperationId, row.Timestamp, request.Start, request.End);
                 var fields = new[] { row.Service, row.Severity, row.Summary, row.Details };
                 var sanitized = fields.Select(TelemetryText.Sanitize).ToArray();

@@ -3,11 +3,14 @@ import { nextTick, onMounted, ref } from "vue";
 
 const props = defineProps({
     endpoint: { type: String, required: true },
+    telemetryTestEndpoint: { type: String, required: true },
+    webhookTestEndpoint: { type: String, required: true },
     chatPage: { type: String, required: true },
     token: { type: String, required: true },
     canOperate: Boolean,
     maxSearchLength: { type: Number, required: true },
-    maxCommentLength: { type: Number, required: true }
+    maxCommentLength: { type: Number, required: true },
+    maxTestMessageLength: { type: Number, required: true }
 });
 const items = ref([]);
 const search = ref("");
@@ -23,6 +26,9 @@ const dialog = ref(null);
 const commentInput = ref(null);
 const completing = ref(null);
 const comment = ref("");
+const testMessage = ref("Hello from the webhook inbox.");
+const activeTest = ref("");
+const testReceipt = ref(null);
 let returnFocus = null;
 const formatDate = value => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 const chatUrl = sessionId => {
@@ -42,7 +48,7 @@ async function request(url, method = "GET", body) {
         if (response.status === 401 || response.status === 403)
             detail = "Your session expired or access was denied. Reload the page to sign in.";
         else if (response.status === 429) detail = "Too many requests. Wait a minute before trying again.";
-        else if (response.status === 400 || response.status === 409) {
+        else if ([400, 409, 502, 503, 504].includes(response.status)) {
             const problem = await response.json();
             detail = problem.title ?? detail;
         }
@@ -124,10 +130,66 @@ async function startChat(item) {
     finally { busy.value = false; }
 }
 
+async function runTest(kind) {
+    if (busy.value) return;
+    busy.value = true;
+    activeTest.value = kind;
+    testReceipt.value = null;
+    error.value = "";
+    status.value = "";
+    try {
+        const result = await request(kind === "telemetry" ? props.telemetryTestEndpoint : props.webhookTestEndpoint,
+            "POST", kind === "webhook" ? { message: testMessage.value } : undefined);
+        testReceipt.value = { ...result, kind };
+        if (kind === "webhook") {
+            search.value = "";
+            handled.value = "all";
+            sort.value = "desc";
+            tokens.value = [null];
+            await readPage(0);
+        }
+    } catch (failure) {
+        error.value = testReceipt.value
+            ? "The test notification was accepted, but the inbox could not refresh. Refresh before sending another test."
+            : failure.message;
+    } finally { busy.value = false; activeTest.value = ""; }
+}
+
 onMounted(() => load(true));
 </script>
 
 <template>
+    <section v-if="canOperate" class="notification-test-tools" aria-labelledby="notification-tests-title" :aria-busy="!!activeTest">
+        <header><div><p class="eyebrow">PIPELINE CHECK / OPERATOR TOOLS</p><h2 id="notification-tests-title">Send a signal. Follow the evidence.</h2></div>
+            <span class="notification-test-badge">Manual tests only</span></header>
+        <div class="notification-test-grid">
+            <article class="notification-test-card">
+                <div class="notification-test-card-heading"><span class="notification-test-icon" aria-hidden="true">&#9889;</span>
+                    <div><span class="eyebrow">01 / TELEMETRY</span><h3>Application Insights</h3></div></div>
+                <p>Generate one handled exception and one warning trace with a random test ID and the current UTC time.</p>
+                <button type="button" class="notification-test-button" :disabled="busy" @click="runTest('telemetry')">
+                    <span>{{ activeTest === "telemetry" ? "Generating..." : "Generate telemetry" }}</span><span aria-hidden="true">&#8599;</span>
+                </button>
+                <small>Clearly marked synthetic data. Ingestion may take a few minutes.</small>
+            </article>
+            <form class="notification-test-card" @submit.prevent="runTest('webhook')">
+                <div class="notification-test-card-heading"><span class="notification-test-icon webhook" aria-hidden="true">&#8644;</span>
+                    <div><span class="eyebrow">02 / LOCAL DELIVERY</span><h3>Test this webhook</h3></div></div>
+                <label for="notification-test-message">Test message</label>
+                <input id="notification-test-message" v-model="testMessage" type="text" required :maxlength="maxTestMessageLength"
+                       :disabled="busy" placeholder="A message to find in your inbox..." />
+                <button type="submit" class="notification-test-button secondary" :disabled="busy || !testMessage.trim()">
+                    <span>{{ activeTest === "webhook" ? "Sending..." : "Send test webhook" }}</span><span aria-hidden="true">&#8594;</span>
+                </button>
+                <small>Uses this application's real endpoint. Saves to Cosmos; never runs an agent.</small>
+            </form>
+        </div>
+        <div v-if="testReceipt" class="notification-test-receipt" role="status" aria-live="polite">
+            <strong>{{ testReceipt.kind === "telemetry" ? "Exception and warning trace queued." : "Test webhook accepted and saved." }}</strong>
+            <span>Test ID <code>{{ testReceipt.testId }}</code> &middot; <time :datetime="testReceipt.occurredAt">{{ testReceipt.occurredAt }} UTC</time></span>
+            <span v-if="testReceipt.kind === 'telemetry'">Search Application Insights for this ID after ingestion completes.</span>
+        </div>
+    </section>
     <section class="notification-inbox" aria-label="Webhook notifications" :aria-busy="busy">
         <form class="notification-toolbar" @submit.prevent="load(true)">
             <div class="notification-search">

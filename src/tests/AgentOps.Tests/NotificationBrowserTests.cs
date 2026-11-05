@@ -13,6 +13,74 @@ public sealed class NotificationBrowserTests
 {
     [TestMethod]
     [TestCategory("Browser")]
+    public async Task OperatorTestButtonsEmitTelemetryAndDeliverEscapedWebhookMessagesWithClearFailureAndMobileStates()
+    {
+        if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
+            Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
+        await using var factory = new AppFactory();
+        factory.UseKestrel();
+        using var client = factory.CreateClient();
+        var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new()
+        {
+            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"),
+            Headless = true
+        });
+        await using var context = await browser.NewContextAsync(new()
+        {
+            ExtraHTTPHeaders = new Dictionary<string, string> { ["X-Test-Role"] = "AgentOps.Operator" },
+            ViewportSize = new() { Width = 1440, Height = 1100 }
+        });
+        var page = await context.NewPageAsync();
+        var errors = new List<string>();
+        page.PageError += (_, error) => errors.Add(error);
+        await page.GotoAsync(address + RouteConstants.NotificationsPage);
+        var telemetry = page.GetByRole(AriaRole.Button, new() { Name = "Generate telemetry" });
+        await Assertions.Expect(telemetry).ToBeEnabledAsync();
+        await telemetry.ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("not configured");
+        var channel = NotificationTestActionTests.CaptureTelemetry(factory.Services);
+        await telemetry.ClickAsync();
+        var receipt = page.Locator(".notification-test-receipt");
+        await Assertions.Expect(receipt).ToContainTextAsync("Exception and warning trace queued.");
+        channel.TestItems.Should().HaveCount(2);
+        var testId = channel.TestItems.OfType<Microsoft.ApplicationInsights.DataContracts.TraceTelemetry>().Single().Properties["TestId"];
+        await Assertions.Expect(receipt).ToContainTextAsync(testId);
+        await page.GetByLabel("Status", new() { Exact = true }).SelectOptionAsync("handled");
+        await page.GetByLabel("Received date").SelectOptionAsync("asc");
+        await page.GetByLabel("Search messages").FillAsync("will-not-match");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Search", Exact = true }).ClickAsync();
+        const string message = "<img src=x onerror=alert(1)> Local delivery check";
+        await page.GetByLabel("Test message", new() { Exact = true }).FillAsync(message);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Send test webhook" }).ClickAsync();
+        await Assertions.Expect(receipt).ToContainTextAsync("Test webhook accepted and saved.");
+        await Assertions.Expect(page.GetByLabel("Status", new() { Exact = true })).ToHaveValueAsync("all");
+        await Assertions.Expect(page.GetByLabel("Received date")).ToHaveValueAsync("desc");
+        await Assertions.Expect(page.GetByLabel("Search messages")).ToHaveValueAsync("");
+        var row = page.Locator("tr[data-notification-id]");
+        await Assertions.Expect(row).ToHaveCountAsync(1);
+        await Assertions.Expect(row).ToContainTextAsync(message);
+        await Assertions.Expect(row.Locator("img, script")).ToHaveCountAsync(0);
+        factory.Notifications.Items.Should().ContainSingle().Which.Value.Message.Should().Be(message);
+        factory.ChatAgent.Calls.Should().BeEmpty();
+        (await page.ContentAsync()).Should().NotContain("test-only-webhook-key");
+        if (Environment.GetEnvironmentVariable("AGENTOPS_NOTIFICATION_TESTS_SCREENSHOT") is { Length: > 0 } screenshot)
+            await page.ScreenshotAsync(new() { Path = screenshot, FullPage = true });
+        factory.Notifications.FailCreate = true;
+        await page.GetByRole(AriaRole.Button, new() { Name = "Send test webhook" }).ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Alert)).ToContainTextAsync("did not acknowledge");
+        await Assertions.Expect(receipt).ToHaveCountAsync(0);
+        factory.Notifications.Items.Should().ContainSingle();
+        await page.SetViewportSizeAsync(390, 844);
+        (await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > window.innerWidth")).Should().BeFalse();
+        await Assertions.Expect(telemetry).ToBeEnabledAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Send test webhook" })).ToBeEnabledAsync();
+        errors.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    [TestCategory("Browser")]
     public async Task InboxSearchPagingCompletionAndPrivateChatHandoffWorkOnDesktopAndMobile()
     {
         if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
@@ -152,5 +220,7 @@ public sealed class NotificationBrowserTests
         await page.GotoAsync(address + RouteConstants.NotificationsPage);
         await Assertions.Expect(page.GetByRole(AriaRole.Checkbox)).ToBeDisabledAsync();
         await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Start chat" })).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Generate telemetry" })).ToHaveCountAsync(0);
+        await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Send test webhook" })).ToHaveCountAsync(0);
     }
 }

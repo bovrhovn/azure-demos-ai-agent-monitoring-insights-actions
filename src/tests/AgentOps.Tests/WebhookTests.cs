@@ -148,7 +148,9 @@ public sealed class WebhookTests
         foreach (var header in headers.Skip(1).Where(line => !line.StartsWith("Content-Type:", StringComparison.Ordinal)))
         {
             var pair = header.Split(':', 2);
-            request.Headers.Add(pair[0], pair[1].Trim().Replace("{{apiKey}}", TestKey));
+            var value = pair[1].Trim().Replace("{{apiKey}}", TestKey).Replace("{{myapiKey}}", TestKey);
+            value.Should().NotContain("{{", sample);
+            request.Headers.Add(pair[0], value);
         }
 
         using var response = await client.SendAsync(request);

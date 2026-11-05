@@ -47,8 +47,9 @@ public sealed class ConfigurationTests
         else credential.Should().BeOfType<DefaultAzureCredential>();
         provider.GetRequiredService<TokenCredential>().Should().BeSameAs(credential);
         provider.GetRequiredService<IChatAgent>().Should().BeOfType<BasicFoundryAgentRunner>();
-        provider.GetRequiredService<IAgentRunner>().Should().BeOfType<PendingAgentRunner>(
-            "automated actions remain disabled; the conversational runner only serves chat");
+        services.Should().Contain(descriptor => descriptor.ServiceType == typeof(IAgentRunner) &&
+            descriptor.ImplementationType == typeof(ErrorInvestigationRunner),
+            "automated investigations use the configured Foundry factory without remediation tools");
     }
 
     [TestMethod]

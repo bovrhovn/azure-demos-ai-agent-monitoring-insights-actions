@@ -5,15 +5,18 @@
 }
 <div class="page-heading notification-heading">
     <div><p class="eyebrow">OPERATIONS / WEBHOOK INBOX</p><h1>Every signal.<br /><span>A place to begin.</span></h1></div>
-    <p class="page-intro">Review incoming Event Grid messages, open a conversation, and keep a clear record of what is handled.</p>
+    <p class="page-intro">Review Event Grid messages and agent investigation proposals. Select one to prefill a private chat; you decide when to send it, act on a proposal, or mark it handled with a comment.</p>
 </div>
 <div data-notifications
      data-endpoint="@Url.Content($"~{RouteConstants.Notifications}")"
+     data-telemetry-test-endpoint="@Url.Content($"~{RouteConstants.Notifications}{RouteConstants.NotificationTelemetryTest}")"
+     data-webhook-test-endpoint="@Url.Content($"~{RouteConstants.Notifications}{RouteConstants.NotificationWebhookTest}")"
      data-chat-page="@Url.Content($"~{RouteConstants.ChatPage}")"
      data-token="@Model.AntiforgeryToken"
      data-can-operate="@Model.CanOperate.ToString().ToLowerInvariant()"
      data-max-search-length="@Model.MaxSearchLength"
-     data-max-comment-length="@Model.MaxCommentLength">
+     data-max-comment-length="@Model.MaxCommentLength"
+     data-max-test-message-length="@Model.MaxTestMessageLength">
     <p class="empty-state" role="status">Opening your webhook inbox...</p>
 </div>
 <noscript><div class="notice">Enable JavaScript to search and manage webhook notifications.</div></noscript>

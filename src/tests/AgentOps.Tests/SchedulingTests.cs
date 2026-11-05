@@ -33,7 +33,7 @@ public sealed class SchedulingTests
         await factory.Services.GetServices<IHostedService>().OfType<RecurringScheduleRegistration>().Single()
             .StartAsync(CancellationToken.None);
         connection.GetRecurringJobs().Should().ContainSingle("startup registration must be idempotent");
-        var retry = JobFilterProviders.Providers.GetFilters(Job.FromExpression<AgentJob>(job => job.RunAsync(CancellationToken.None)))
+        var retry = JobFilterProviders.Providers.GetFilters(Job.FromExpression<AgentJob>(job => job.RunAsync(CancellationToken.None, null)))
             .Select(filter => filter.Instance).OfType<AutomaticRetryAttribute>().Single();
         retry.Attempts.Should().Be(0);
     }
@@ -45,7 +45,7 @@ public sealed class SchedulingTests
         using var client = factory.Client();
         using var connection = factory.Services.GetRequiredService<JobStorage>().GetConnection();
         connection.GetRecurringJobs().Should().BeEmpty();
-        factory.Services.GetRequiredService<IBackgroundJobClient>().Enqueue<AgentJob>(job => job.RunAsync(CancellationToken.None));
+        factory.Services.GetRequiredService<IBackgroundJobClient>().Enqueue<AgentJob>(job => job.RunAsync(CancellationToken.None, null));
         var execution = await factory.Store.ScheduledCompletion.Task.WaitAsync(TimeSpan.FromSeconds(20));
         execution.RequestedBy.Should().Be("hangfire");
     }
@@ -57,7 +57,7 @@ public sealed class SchedulingTests
         {
             using var client = first.Client();
             first.Services.GetRequiredService<IBackgroundJobClient>().Schedule<AgentJob>(
-                job => job.RunAsync(CancellationToken.None), TimeSpan.FromDays(1));
+                job => job.RunAsync(CancellationToken.None, null), TimeSpan.FromDays(1));
             first.Services.GetRequiredService<JobStorage>().GetMonitoringApi().ScheduledCount().Should().Be(1);
         }
         await using var restarted = new AppFactory();

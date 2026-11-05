@@ -130,7 +130,9 @@ public sealed class CosmosEmulatorTests
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Scheduling:Cron"] = "0 0 1 1 *" });
             var services = builder.Services;
             services.AddSingleton<IExecutionStore>(store);
-            services.AddSingleton<IAgentRunner, PendingAgentRunner>();
+            services.AddSingleton(Moq.Mock.Of<IAgentRunner>(runner =>
+                runner.RunAsync(Moq.It.IsAny<ExecutionRecord>(), Moq.It.IsAny<CancellationToken>()) ==
+                    Task.FromResult(new AgentOutcome(ExecutionContract.NotImplemented, "Test adapter outcome"))));
             var notifier = new CompletionNotifier();
             services.AddSingleton<IExecutionNotifier>(notifier);
             services.AddSingleton<TimeProvider>(TimeProvider.System);

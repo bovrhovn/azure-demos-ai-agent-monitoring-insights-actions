@@ -48,13 +48,23 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IExecutionStore, CosmosExecutionStore>();
         services.AddSingleton<IExecutionNotifier, SignalRExecutionNotifier>();
         services.AddScoped<ExecuteAgent>();
-        services.AddSingleton<IAgentRunner, PendingAgentRunner>();
+        services.AddSingleton<IAgentRunner, ErrorInvestigationRunner>();
         services.AddSingleton<IFoundryAgentFactory, FoundryAgentFactory>();
         services.AddSingleton<IChatStore, CosmosChatStore>();
         services.AddSingleton<IChatAgent, BasicFoundryAgentRunner>();
         services.AddSingleton<ChatService>();
         services.AddSingleton<INotificationStore, CosmosNotificationStore>();
         services.AddSingleton<NotificationService>();
+        services.AddTransient<NotificationTestService>();
+        services.AddHttpClient<LocalWebhookDelivery>((provider, client) =>
+            client.Timeout = TimeSpan.FromSeconds(provider.GetRequiredService<IOptions<NotificationOptions>>().Value.TestTimeoutSeconds))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                UseProxy = false,
+                UseCookies = false
+            })
+            .RedactLoggedHeaders([WebhookOptions.ApiKeyHeader]);
         services.AddSingleton(provider => new LogsQueryClient(provider.GetRequiredService<TokenCredential>()));
         services.AddSingleton<ITelemetryQuery, TelemetryQuery>();
         services.AddScoped<IInsightsReader, InsightsReader>();

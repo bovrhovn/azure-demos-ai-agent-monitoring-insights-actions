@@ -48,7 +48,7 @@ public sealed class WebTests
         var response = await account.PostAsync("/api/executions", null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var run = await response.Content.ReadFromJsonAsync<ExecutionRecord>();
-        run!.Status.Should().Be(ExecutionContract.NotImplemented);
+        run!.Status.Should().Be(ExecutionContract.Completed);
         run.Trigger.Should().Be(ExecutionContract.Endpoint);
         run.RequestedBy.Should().Be("test-caller");
         (await account.GetFromJsonAsync<ExecutionRecord[]>("/api/executions"))!.Should().ContainSingle(x => x.Id == run.Id);
@@ -133,11 +133,11 @@ public sealed class WebTests
         await client.GetAsync("/health/live");
         factory.Services.GetRequiredService<IRecurringJobManager>().Trigger("insights-agent");
         var run = await factory.Store.ScheduledCompletion.Task.WaitAsync(TimeSpan.FromSeconds(20));
-        run.Status.Should().Be(ExecutionContract.NotImplemented);
+        run.Status.Should().Be(ExecutionContract.Completed);
         run.Trigger.Should().Be(ExecutionContract.Schedule);
         run.RequestedBy.Should().Be("hangfire");
         factory.Store.Writes.Select(record => record.Status).Should()
-            .Equal(ExecutionContract.Running, ExecutionContract.NotImplemented);
+            .Equal(ExecutionContract.Running, ExecutionContract.Completed);
     }
 
     [TestMethod]
@@ -159,7 +159,7 @@ public sealed class WebTests
         hub.On<ExecutionRecord>(ExecutionContract.ChangedEvent, record =>
         {
             if (record.Status == ExecutionContract.Running) started.TrySetResult(record);
-            if (record.Status == ExecutionContract.NotImplemented) completed.TrySetResult(record);
+            if (record.Status == ExecutionContract.Completed) completed.TrySetResult(record);
         });
         await hub.StartAsync();
         ExecutionRecord? result;

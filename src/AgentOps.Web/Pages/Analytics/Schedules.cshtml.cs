@@ -10,10 +10,17 @@ using Hangfire.Storage;
 namespace AgentOps.Web.Pages.Analytics;
 
 public sealed class SchedulesModel(JobStorage storage, ILogger<SchedulesModel> logger, IExecutionStore store,
-    IOptions<ExecutionOptions> executions, IOptions<SchedulingOptions> options) : PageModel
+    IOptions<ExecutionOptions> executions, IOptions<SchedulingOptions> options,
+    IOptions<InsightsOptions> insights, IOptions<InsightsToolOptions> tools, IOptions<FoundryOptions> foundry) : PageModel
 {
     public int HistoryLimit => executions.Value.HistoryLimit;
     public SchedulingOptions Settings => options.Value;
+    public int LookbackMinutes => tools.Value.DefaultLookbackMinutes;
+    public int EvidenceCount => tools.Value.DefaultCount;
+    public bool InvestigationConfigured => tools.Value.Enabled && tools.Value.MaxToolCalls >= 2 &&
+        !string.IsNullOrWhiteSpace(insights.Value.ResourceId) &&
+        Uri.TryCreate(foundry.Value.ProjectEndpoint, UriKind.Absolute, out var endpoint) && endpoint.Scheme == "https" &&
+        !string.IsNullOrWhiteSpace(foundry.Value.ModelDeployment);
     public RecurringJobDto? Schedule { get; private set; }
     public IReadOnlyList<ExecutionRecord> Executions { get; private set; } = [];
 

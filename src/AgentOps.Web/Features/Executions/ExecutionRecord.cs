@@ -17,6 +17,7 @@ public static class ExecutionContract
     public const string Endpoint = "Endpoint";
     public const string Schedule = "Schedule";
     public const string Running = "Running";
+    public const string Completed = "Completed";
     public const string NotImplemented = "NotImplemented";
     public const string Failed = "Failed";
     public const string Canceled = "Canceled";

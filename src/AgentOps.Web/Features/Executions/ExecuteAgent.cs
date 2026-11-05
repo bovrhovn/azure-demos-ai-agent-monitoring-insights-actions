@@ -15,13 +15,17 @@ public sealed class ExecuteAgent(
     IOptions<ExecutionOptions> options,
     ILogger<ExecuteAgent> logger)
 {
-    public async Task<ExecutionRecord> RunAsync(string trigger, string requestedBy, CancellationToken cancellationToken)
+    public async Task<ExecutionRecord> RunAsync(string trigger, string requestedBy, CancellationToken cancellationToken,
+        string? executionId = null)
     {
         if (trigger is not (ExecutionContract.Endpoint or ExecutionContract.Schedule))
             throw new ArgumentException("Unknown execution trigger.", nameof(trigger));
         ArgumentException.ThrowIfNullOrWhiteSpace(requestedBy);
-        var execution = new ExecutionRecord(Guid.NewGuid().ToString("N"), trigger, ExecutionContract.Running,
-            clock.GetUtcNow(), null, requestedBy, Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N"), null);
+        var previous = executionId is null ? null : await store.GetAsync(executionId, trigger, cancellationToken);
+        if (previous?.Status == ExecutionContract.Completed) return previous;
+        var execution = new ExecutionRecord(executionId ?? Guid.NewGuid().ToString("N"), trigger, ExecutionContract.Running,
+            previous?.StartedAt ?? clock.GetUtcNow(), null, requestedBy,
+            previous?.CorrelationId ?? Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N"), null);
         using var scope = logger.BeginScope(new Dictionary<string, object>
         {
             ["ExecutionId"] = execution.Id,
@@ -35,7 +39,7 @@ public sealed class ExecuteAgent(
         timeout.CancelAfter(TimeSpan.FromSeconds(options.Value.TimeoutSeconds));
         try
         {
-            var outcome = await runner.RunAsync(timeout.Token);
+            var outcome = await runner.RunAsync(execution, timeout.Token);
             execution = execution with { Status = outcome.Status, Summary = outcome.Summary, CompletedAt = clock.GetUtcNow() };
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)

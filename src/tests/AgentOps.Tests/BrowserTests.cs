@@ -75,8 +75,8 @@ public sealed class BrowserTests
         var execution = System.Text.Json.JsonSerializer.Deserialize<ExecutionRecord>(await response.TextAsync(),
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
         var row = page.Locator($"tr[data-execution-id='{execution.Id}']");
-        await Assertions.Expect(row).ToContainTextAsync(ExecutionContract.NotImplemented);
-        await Assertions.Expect(row).ToContainTextAsync("No model or action");
+        await Assertions.Expect(row).ToContainTextAsync(ExecutionContract.Completed);
+        await Assertions.Expect(row).ToContainTextAsync("No model or webhook");
         var notifier = factory.Services.GetRequiredService<IExecutionNotifier>();
         foreach (var (id, minutes) in new[] { ("older-a", -1), ("older-b", -2) })
         {
@@ -148,6 +148,10 @@ public sealed class BrowserTests
         });
         var page = await context.NewPageAsync();
         await page.GotoAsync(address + RouteConstants.SchedulesPage);
+        await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Read-only error investigation" })).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByText("No remediation, chat or approval is automatic.", new() { Exact = false })).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "webhook inbox", Exact = true }))
+            .ToHaveAttributeAsync("href", "/Notifications");
         await Assertions.Expect(page.Locator("#live-status")).ToHaveTextAsync("Live feed connected");
         factory.Services.GetRequiredService<IRecurringJobManager>().Trigger("insights-agent");
         try
@@ -270,6 +274,6 @@ public sealed class BrowserTests
     private sealed class ControlledRunner : IAgentRunner
     {
         public TaskCompletionSource<AgentOutcome> Complete { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<AgentOutcome> RunAsync(CancellationToken cancellationToken) => Complete.Task.WaitAsync(cancellationToken);
+        public Task<AgentOutcome> RunAsync(ExecutionRecord execution, CancellationToken cancellationToken) => Complete.Task.WaitAsync(cancellationToken);
     }
 }
