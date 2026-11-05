@@ -10,10 +10,12 @@ public sealed class ChatService(IChatStore store, IChatAgent agent, TimeProvider
 {
     private readonly ConcurrentDictionary<(string Owner, string Session), byte> active = new();
 
-    public async Task<ChatSession> CreateAsync(string owner, CancellationToken cancellationToken)
+    public async Task<ChatSession> CreateAsync(string owner, CancellationToken cancellationToken,
+        string? initialDraft = null, string? sessionId = null)
     {
         var now = time.GetUtcNow();
-        var session = new ChatSession(Guid.NewGuid().ToString("N"), owner, "New conversation", now, now);
+        var session = new ChatSession(sessionId ?? Guid.NewGuid().ToString("N"), owner, "New conversation", now, now)
+            { InitialDraft = initialDraft };
         logger.LogInformation("Creating chat session {SessionId}", session.Id);
         try
         {
@@ -60,7 +62,8 @@ public sealed class ChatService(IChatStore store, IChatAgent agent, TimeProvider
             {
                 Title = session.MessageCount == 0 ? prompt[..Math.Min(prompt.Length, ChatSession.TitleMaxLength)] : session.Title,
                 UpdatedAt = message.Timestamp,
-                MessageCount = message.Sequence
+                MessageCount = message.Sequence,
+                InitialDraft = null
             };
             await store.AppendAsync(session, message, timeout.Token);
             logger.LogInformation("User message {MessageId} saved in chat session {SessionId}; invoking agent", message.Id, sessionId);

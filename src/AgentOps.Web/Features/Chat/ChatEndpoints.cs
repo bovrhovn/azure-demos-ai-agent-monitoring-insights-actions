@@ -31,6 +31,11 @@ public static class ChatEndpoints
         group.MapPost("", async (HttpContext http, ChatService chat) =>
             Results.Ok(await chat.CreateAsync(Owner(http.User), http.RequestAborted)))
             .RequireAuthorization(Policies.Operate).RequireRateLimiting("chat");
+        group.MapGet("/{sessionId}", async (string sessionId, HttpContext http, IChatStore store) =>
+        {
+            var session = await store.GetAsync(Owner(http.User), sessionId, http.RequestAborted);
+            return session is null ? Results.NotFound() : Results.Ok(session);
+        });
         group.MapDelete("/{sessionId}", async (string sessionId, HttpContext http, ChatService chat) =>
         {
             try
@@ -71,7 +76,7 @@ public static class ChatEndpoints
         return endpoints;
     }
 
-    private static string Owner(ClaimsPrincipal user) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+    internal static string Owner(ClaimsPrincipal user) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         $"{user.FindFirstValue("tid") ?? user.FindFirstValue("http://schemas.microsoft.com/identity/claims/tenantid")}\n" +
         $"{user.FindFirstValue("oid") ?? user.FindFirstValue(ClaimTypes.NameIdentifier)}")));
 

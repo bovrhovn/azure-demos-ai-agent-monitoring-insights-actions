@@ -7,6 +7,7 @@ using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Features.Scheduling;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Chat;
+using AgentOps.Web.Features.Notifications;
 using AgentOps.Web.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -28,6 +29,7 @@ internal sealed class AppFactory(IReadOnlyDictionary<string, string?>? settings 
     public FakeInsights Insights { get; } = new();
     public MemoryChatStore Chats { get; } = new();
     public FakeChatAgent ChatAgent { get; } = new();
+    public MemoryNotificationStore Notifications { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -56,6 +58,8 @@ internal sealed class AppFactory(IReadOnlyDictionary<string, string?>? settings 
             services.RemoveAll<IExecutionStore>();
             services.RemoveAll<IChatStore>();
             services.AddSingleton<IChatStore>(Chats);
+            services.RemoveAll<INotificationStore>();
+            services.AddSingleton<INotificationStore>(Notifications);
             services.RemoveAll<IChatAgent>();
             services.AddSingleton<IChatAgent>(ChatAgent);
             services.AddSingleton<IExecutionStore>(Store);

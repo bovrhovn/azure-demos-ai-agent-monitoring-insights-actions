@@ -4,6 +4,7 @@ using AgentOps.Web.Features.Chat;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Insights;
 using AgentOps.Web.Features.Scheduling;
+using AgentOps.Web.Features.Notifications;
 using AgentOps.Web.Infrastructure.Options;
 using Azure.Core;
 using Azure.Identity;
@@ -52,6 +53,8 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IChatStore, CosmosChatStore>();
         services.AddSingleton<IChatAgent, BasicFoundryAgentRunner>();
         services.AddSingleton<ChatService>();
+        services.AddSingleton<INotificationStore, CosmosNotificationStore>();
+        services.AddSingleton<NotificationService>();
         services.AddSingleton(provider => new LogsQueryClient(provider.GetRequiredService<TokenCredential>()));
         services.AddSingleton<ITelemetryQuery, TelemetryQuery>();
         services.AddScoped<IInsightsReader, InsightsReader>();

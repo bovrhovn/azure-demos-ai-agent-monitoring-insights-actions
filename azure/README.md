@@ -69,7 +69,7 @@ $deployment = .\azure\scripts\Deploy-All.ps1 @settings `
     -CosmosAccountName '<existing-nosql-account>' -CosmosResourceGroup '<cosmos-group>'
 ```
 
-The Cosmos data module creates the dedicated database, execution-history container (`/trigger`) and a database-scoped data-plane grant in the account's resource group. Configure names through `cosmosDatabaseName` and `cosmosContainerName`. Hangfire scheduling uses process-local memory, not a Cosmos schedule container or a relational database. Existing account authentication and network settings remain unchanged. By default, reusing an account provisions a VNet, Container Apps infrastructure subnet, private endpoint and linked private DNS zone in the app resource group. The account must permit approving that private endpoint. Public Cosmos access is not enabled as a workaround.
+The Cosmos data module creates the dedicated database, execution-history container (`/trigger`), private chat container (`/ownerId`), notification inbox (`/id`) and a database-scoped data-plane grant in the account's resource group. Configure names through `cosmosDatabaseName`, `cosmosContainerName`, `chatContainerName` and `notificationContainerName`. Hangfire scheduling uses process-local memory, not a Cosmos schedule container or a relational database. Existing account authentication and network settings remain unchanged. By default, reusing an account provisions a VNet, Container Apps infrastructure subnet, private endpoint and linked private DNS zone in the app resource group. The account must permit approving that private endpoint. Public Cosmos access is not enabled as a workaround.
 
 Key Vault also defaults to private access when private Cosmos connectivity is selected. Its separate `privatelink.vaultcore.azure.net` zone, VNet link and private endpoint are created before Container Apps resolves the managed-identity secret reference. `usePrivateKeyVault` can be configured independently; selecting either private service creates the required VNet-integrated environment. Without private Key Vault connectivity, the new vault explicitly uses public access with RBAC.
 
@@ -161,7 +161,25 @@ tracked settings, request URLs, deployment outputs or source code.
 The topic uses Entra-authenticated publishing (`disableLocalAuth=true`). Its subscription
 stores the matching header as a secret static delivery property. Subscription validation
 returns the exact `validationResponse`; ordinary notifications return an empty `200 OK`
-without invoking the agent, writing execution history or following validation URLs.
+only after each event is saved in `Notifications:Container` (default `notifications`).
+Each record contains the raw event JSON, `data.message` (or an empty string when absent),
+UTC `ReceivedDate`, `IsHandled`, an optional completion comment and a nullable chat session ID.
+Subscription validation events are not saved to the inbox.
+Events with an `id` are deduplicated by topic and event ID; retries preserve the original
+receipt date, handled state, comment and session association. Events without an ID are
+stored as separate receipts. Persistence failures return an error so Event Grid can retry.
+Payloads are bounded by `Webhook:MaxPayloadBytes` (default 262144 bytes).
+
+The **Webhook inbox** menu opens newest-first, with message search, continuation-token
+paging and All/Handled/Unhandled filters (All by default). Readers can review notifications;
+operators can change status and open chats. Completing always opens a confirmation dialog
+with an optional comment; marking unhandled preserves the previous note. Starting a chat
+reserves a retryable association, creates a private session and prefills its composer without
+sending the message or invoking the agent. Messages must fit `Chat:MaxPromptLength` to start
+a chat; the full raw event remains available in the inbox. Session links respect chat ownership.
+In Azure, redeploy the data module to provision the notification container before running
+the updated application; readiness now checks all three containers.
+
 The deployment script registers the subscription only after readiness and requires
 `provisioningState=Succeeded`; it does not bypass Event Grid's connection check.
 When rotating the webhook key, redeploy both the Container Apps secret reference and

@@ -272,9 +272,11 @@ internal sealed class MemoryChatStore : IChatStore
     public ConcurrentQueue<ChatMessage> Messages { get; } = new();
     public bool FailAppend { get; set; }
     public bool FailDelete { get; set; }
+    public bool FailCreate { get; set; }
     public Task CreateAsync(ChatSession session, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (FailCreate) throw new InvalidOperationException("private chat creation failure");
         Sessions[(session.OwnerId, session.Id)] = session;
         return Task.CompletedTask;
     }

@@ -12,11 +12,13 @@ public sealed class IndexModel(IAntiforgery antiforgery, IAuthorizationService a
 {
     public string AntiforgeryToken { get; private set; } = "";
     public bool CanSend { get; private set; }
+    public string? InitialSessionId { get; private set; }
     public int MaxPromptLength => options.Value.MaxPromptLength;
     public int HistoryLimit => options.Value.HistoryLimit;
 
-    public async Task OnGetAsync()
+    public async Task OnGetAsync(string? sessionId)
     {
+        InitialSessionId = sessionId;
         AntiforgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken!;
         CanSend = (await authorization.AuthorizeAsync(User, Policies.Operate)).Succeeded;
     }

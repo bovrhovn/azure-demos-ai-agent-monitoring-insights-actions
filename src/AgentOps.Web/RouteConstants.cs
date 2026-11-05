@@ -11,6 +11,8 @@ public static class RouteConstants
     public const string LogsPage = "/Analytics/Logs";
     public const string ChatPage = "/Chat/Index";
     public const string ChatSessions = "/ui/chat/sessions";
+    public const string NotificationsPage = "/Notifications/Index";
+    public const string Notifications = "/ui/notifications";
     public const string LegacyIndexPage = "/Index";
     public const string LegacyErrorPage = "/Error";
     public const string LegacySchedulesPage = "/Schedules";

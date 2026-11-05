@@ -2,19 +2,20 @@
 # Set Webhook__ApiKey in the HTTP client's process environment to the same value
 # as the application's Webhook:ApiKey. Never paste real keys into this file.
 @url = {{url}}
-@apiKey = {{apiKey}}
+@myapiKey = {{apikey}}
 
 # Event Grid schema: https://learn.microsoft.com/azure/event-grid/event-schema
 # Send a nonempty array. Each event below includes id, subject, eventType,
 # eventTime (UTC), data, dataVersion, topic and metadataVersion.
 # Custom event data is publisher-defined; BlobCreated uses Storage event data.
-# This endpoint acknowledges notifications only: no agents or actions are run.
+# Each event is saved in the notifications container; no agents or actions are run.
+# data.message becomes the searchable inbox message and optional chat draft.
 
 ### Custom notification with nested data
 # Expected status: 200
 POST {{url}}/api/webhooks/eventgrid
 Content-Type: application/json
-X-Api-Key: {{apiKey}}
+X-Api-Key: {{myapiKey}}
 aeg-event-type: Notification
 
 [

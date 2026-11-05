@@ -126,7 +126,7 @@ Describe 'Compiled infrastructure contract' {
         ($project.dependsOn -join ',') | Should -Match 'Microsoft.CognitiveServices/accounts/deployments'
         $dataModule = $script:template.resources | Where-Object { $_.name -match 'cosmos-data' }
         $containers = @($dataModule.properties.template.resources | Where-Object { $_.type -match '/containers$' })
-        $containers.Count | Should -Be 2
+        $containers.Count | Should -Be 3
         ($containers.properties.resource.partitionKey.paths | ForEach-Object { $_ }) | Should -Contain '/trigger'
         ($containers.properties.resource.partitionKey.paths | ForEach-Object { $_ }) | Should -Contain '/ownerId'
         $chat = $containers | Where-Object { $_.properties.resource.id -match 'chatContainerName' }
@@ -134,6 +134,11 @@ Describe 'Compiled infrastructure contract' {
         $appChat = $script:template.resources | Where-Object type -EQ 'Microsoft.App/containerApps'
         $appChat.properties.template.containers[0].env | Where-Object name -EQ 'Chat__Container' |
             ForEach-Object value | Should -Be "[parameters('chatContainerName')]"
+        $notifications = $containers | Where-Object { $_.properties.resource.id -match 'notificationContainerName' }
+        $notifications.properties.resource.partitionKey.paths | Should -Contain '/id'
+        $notifications.properties.resource.indexingPolicy.excludedPaths.path | Should -Contain '/rawData/?'
+        $appChat.properties.template.containers[0].env | Where-Object name -EQ 'Notifications__Container' |
+            ForEach-Object value | Should -Be "[parameters('notificationContainerName')]"
         $script:template.parameters.ContainsKey('cosmosScheduleContainerName') | Should -BeFalse
         $app = $script:template.resources | Where-Object type -EQ 'Microsoft.App/containerApps'
         @($app.properties.template.containers[0].env | Where-Object name -EQ 'Cosmos__ScheduleContainer').Count | Should -Be 0

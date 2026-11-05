@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Chat;
+using AgentOps.Web.Features.Notifications;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Features.Agent;
 using AgentOps.Web.Features.Scheduling;
@@ -22,6 +23,48 @@ public sealed class CosmosEmulatorTests
 {
     [TestMethod]
     [TestCategory("Emulator")]
+    public async Task NotificationsPersistRawMessagesPageSearchAndPatchHandlingWithoutLosingSessionLinks()
+    {
+        using var client = EmulatorClient();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        var cosmos = Options.Create(new CosmosOptions { Database = "test-inbox-" + Guid.NewGuid().ToString("N"), InitializeDatabase = true });
+        var options = Options.Create(new NotificationOptions());
+        var initialization = new CosmosInitialization(client, cosmos, Options.Create(new ChatOptions()), options,
+            NullLogger<CosmosInitialization>.Instance);
+        try
+        {
+            await initialization.StartAsync(timeout.Token);
+            var store = new CosmosNotificationStore(client, cosmos, options, NullLogger<CosmosNotificationStore>.Instance);
+            var now = DateTimeOffset.UtcNow;
+            var first = new NotificationRecord("first", """{"data":{"message":"Check latency","count":2}}""", "Check latency", now.AddMinutes(-1));
+            await store.CreateAsync(first, timeout.Token);
+            await store.CreateAsync(first with { Id = "second", Message = "Other alert", ReceivedDate = now }, timeout.Token);
+            var page = await store.ListAsync(null, null, true, 1, null, timeout.Token);
+            page.Items.Should().ContainSingle().Which.Id.Should().Be("second");
+            page.ContinuationToken.Should().NotBeNull();
+            (await store.ListAsync(null, null, true, 1, page.ContinuationToken, timeout.Token)).Items.Should().ContainSingle().Which.Id.Should().Be("first");
+            (await store.ListAsync("LATENCY", false, false, 10, null, timeout.Token)).Items.Should().ContainSingle().Which.Should().Be(first);
+            await store.SetHandledAsync(first.Id, true, "Resolved", timeout.Token);
+            await store.AssignSessionAsync(first.Id, "owner", "session", timeout.Token);
+            var winner = await store.AssignSessionAsync(first.Id, "other-owner", "other-session", timeout.Token);
+            winner!.ChatSessionId.Should().Be("session");
+            winner.ChatOwnerId.Should().Be("owner");
+            await store.CreateAsync(first, timeout.Token);
+            await store.SetHandledAsync(first.Id, false, null, timeout.Token);
+            var restored = new CosmosNotificationStore(client, cosmos, options, NullLogger<CosmosNotificationStore>.Instance);
+            (await restored.GetAsync(first.Id, timeout.Token)).Should().Be(first with
+                { Comment = "Resolved", ChatSessionId = "session", ChatOwnerId = "owner" });
+            (await restored.ListAsync(null, true, true, 10, null, timeout.Token)).Items.Should().BeEmpty();
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await client.GetDatabase(cosmos.Value.Database).DeleteAsync(cancellationToken: cleanup.Token);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Emulator")]
     public async Task ChatInitializationIsIdempotentAndRoundTripsPrivateOrderedMessagesAtomically()
     {
         using var client = EmulatorClient();
@@ -31,7 +74,8 @@ public sealed class CosmosEmulatorTests
             Database = "test-chat-" + Guid.NewGuid().ToString("N"), InitializeDatabase = true
         });
         var chat = Options.Create(new ChatOptions());
-        var initialization = new CosmosInitialization(client, cosmos, chat, NullLogger<CosmosInitialization>.Instance);
+        var initialization = new CosmosInitialization(client, cosmos, chat, Options.Create(new NotificationOptions()),
+            NullLogger<CosmosInitialization>.Instance);
         try
         {
             await initialization.StartAsync(timeout.Token);

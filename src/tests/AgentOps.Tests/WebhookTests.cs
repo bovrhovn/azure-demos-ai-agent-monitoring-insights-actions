@@ -28,6 +28,7 @@ public sealed class WebhookTests
         if (key is not null) client.DefaultRequestHeaders.Add(WebhookOptions.ApiKeyHeader, key);
         using var response = await client.PostAsync(RouteConstants.EventGridWebhook, Json(Notification));
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        factory.Notifications.Items.Should().BeEmpty();
         factory.Store.Writes.Should().BeEmpty();
     }
 
@@ -77,6 +78,7 @@ public sealed class WebhookTests
         client.DefaultRequestHeaders.Add(WebhookOptions.ApiKeyHeader, TestKey);
         using var response = await client.PostAsync(RouteConstants.EventGridWebhook, Json(body));
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        factory.Notifications.Items.Should().BeEmpty();
         factory.Store.Writes.Should().BeEmpty();
     }
 
@@ -137,7 +139,9 @@ public sealed class WebhookTests
         var parts = block[(requestStart + 1)..].Split("\n\n", 2);
         parts.Should().HaveCount(2, sample);
         var headers = parts[0].Split('\n');
-        var url = headers[0]["POST ".Length..].Replace("{{baseUrl}}", client.BaseAddress!.GetLeftPart(UriPartial.Authority));
+        var origin = client.BaseAddress!.GetLeftPart(UriPartial.Authority);
+        var url = headers[0]["POST ".Length..].Replace("{{baseUrl}}", origin).Replace("{{url}}", origin);
+        url.Should().NotContain("{{", sample);
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         var contentType = headers.Single(line => line.StartsWith("Content-Type: ", StringComparison.Ordinal))["Content-Type: ".Length..];
         request.Content = new StringContent(parts[1].Trim(), Encoding.UTF8, contentType);
@@ -158,10 +162,15 @@ public sealed class WebhookTests
                 var result = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
                 result.Should().ContainSingle().Which.Should().Be(new KeyValuePair<string, string>(
                     "validationResponse", first.GetProperty("data").GetProperty("validationCode").GetString()!));
+                factory.Notifications.Items.Should().BeEmpty(sample);
             }
             else
+            {
                 (await response.Content.ReadAsStringAsync()).Should().BeEmpty(sample);
+                factory.Notifications.Items.Should().HaveCount(events.RootElement.GetArrayLength(), sample);
+            }
         }
+        else factory.Notifications.Items.Should().BeEmpty(sample);
         factory.Store.Writes.Should().BeEmpty(sample);
     }
 

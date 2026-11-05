@@ -42,7 +42,7 @@
         </div>
         <div class="navigation-bar">
         <nav aria-label="Primary navigation">
-            @foreach (var item in new[] { (RouteConstants.IndexPage, "Overview"), (RouteConstants.SchedulesPage, "Schedules"), (RouteConstants.ExecutionsPage, "Endpoint runs"), (RouteConstants.LogsPage, "Application logs"), (RouteConstants.ChatPage, "Agent chat") })
+            @foreach (var item in new[] { (RouteConstants.IndexPage, "Overview"), (RouteConstants.SchedulesPage, "Schedules"), (RouteConstants.ExecutionsPage, "Endpoint runs"), (RouteConstants.LogsPage, "Application logs"), (RouteConstants.NotificationsPage, "Webhook inbox"), (RouteConstants.ChatPage, "Agent chat") })
             {
                 var active = ViewContext.RouteData.Values["page"]?.ToString() == item.Item1;
                 <a href="@Url.Content($"~{item.Item1}")" class="nav-item @(active ? "active" : "")" aria-current="@(active ? "page" : null)">

@@ -8,6 +8,7 @@ public sealed record ChatSession(string Id, string OwnerId, string Title, DateTi
     public const int TitleMaxLength = 60;
     public string Kind { get; init; } = "session";
     public bool IsDeleting { get; init; }
+    public string? InitialDraft { get; init; }
 }
 
 public sealed record ChatMessage(string Id, string OwnerId, string SessionId, string Role, string Content,

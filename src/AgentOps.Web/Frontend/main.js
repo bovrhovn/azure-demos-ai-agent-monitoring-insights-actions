@@ -4,6 +4,7 @@ import SchedulePanel from "./components/SchedulePanel.vue";
 import LogsPanel from "./components/LogsPanel.vue";
 import ExecutionFeed from "./components/ExecutionFeed.vue";
 import ChatWorkspace from "./components/ChatWorkspace.vue";
+import NotificationInbox from "./components/NotificationInbox.vue";
 
 const routes = document.body.dataset;
 const panels = [
@@ -24,5 +25,16 @@ if (chat) createApp(ChatWorkspace, {
     token: chat.dataset.token,
     canSend: chat.dataset.canSend === "true",
     maxLength: Number(chat.dataset.maxLength),
-    historyLimit: Number(chat.dataset.historyLimit)
+    historyLimit: Number(chat.dataset.historyLimit),
+    initialSessionId: chat.dataset.sessionId
 }).mount(chat);
+
+const notifications = document.querySelector("[data-notifications]");
+if (notifications) createApp(NotificationInbox, {
+    endpoint: notifications.dataset.endpoint,
+    chatPage: notifications.dataset.chatPage,
+    token: notifications.dataset.token,
+    canOperate: notifications.dataset.canOperate === "true",
+    maxSearchLength: Number(notifications.dataset.maxSearchLength),
+    maxCommentLength: Number(notifications.dataset.maxCommentLength)
+}).mount(notifications);

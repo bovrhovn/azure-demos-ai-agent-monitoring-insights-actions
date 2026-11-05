@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Infrastructure.Options;
+using AgentOps.Web.Features.Notifications;
 using Microsoft.Extensions.Options;
 
 namespace AgentOps.Web.Features.Webhooks;
@@ -15,7 +16,7 @@ public static class EventGridWebhook
         endpoints.MapPost(RouteConstants.EventGridWebhook, HandleAsync).AllowAnonymous();
 
     private static async Task<IResult> HandleAsync(HttpRequest request, IOptions<WebhookOptions> options,
-        ILoggerFactory loggerFactory, CancellationToken cancellationToken)
+        INotificationStore notifications, TimeProvider time, ILoggerFactory loggerFactory, CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("AgentOps.Web.Features.Webhooks.EventGridWebhook");
         if (!request.Headers.TryGetValue(WebhookOptions.ApiKeyHeader, out var supplied) ||
@@ -31,10 +32,21 @@ public static class EventGridWebhook
         if (!request.HasJsonContentType())
             return Results.Problem("An Event Grid JSON event array is required.", statusCode: StatusCodes.Status415UnsupportedMediaType);
 
+        var buffer = new byte[options.Value.MaxPayloadBytes + 1];
+        var length = 0;
+        while (length < buffer.Length)
+        {
+            var read = await request.Body.ReadAsync(buffer.AsMemory(length), cancellationToken);
+            if (read == 0) break;
+            length += read;
+        }
+        if (length > options.Value.MaxPayloadBytes)
+            return Results.Problem("The webhook payload exceeds the configured size limit.", statusCode: StatusCodes.Status413PayloadTooLarge);
+
         JsonDocument document;
         try
         {
-            document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+            document = JsonDocument.Parse(buffer.AsMemory(0, length));
         }
         catch (JsonException)
         {
@@ -64,7 +76,20 @@ public static class EventGridWebhook
                 return Results.Ok(new { validationResponse = code.GetString() });
             }
 
-            logger.LogInformation("Event Grid webhook acknowledged {EventCount} events; no actions were executed.", events.GetArrayLength());
+            var receivedDate = time.GetUtcNow();
+            foreach (var item in events.EnumerateArray())
+            {
+                var eventId = item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+                    ? id.GetString() : null;
+                var topic = item.TryGetProperty("topic", out var source) && source.ValueKind == JsonValueKind.String
+                    ? source.GetString() : null;
+                var notificationId = string.IsNullOrWhiteSpace(eventId) ? Guid.NewGuid().ToString("N")
+                    : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new[] { topic, eventId }))));
+                var message = item.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object &&
+                    data.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString()! : "";
+                await notifications.CreateAsync(new(notificationId, item.GetRawText(), message, receivedDate), cancellationToken);
+            }
+            logger.LogInformation("Event Grid webhook saved {EventCount} notifications; no actions were executed.", events.GetArrayLength());
             return Results.Ok();
         }
     }

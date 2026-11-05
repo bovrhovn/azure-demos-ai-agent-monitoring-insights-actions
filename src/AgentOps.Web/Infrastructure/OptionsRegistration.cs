@@ -25,6 +25,10 @@ public static class OptionsRegistration
             .Validate<Microsoft.Extensions.Options.IOptions<CosmosOptions>>((chat, cosmos) => chat.Container != cosmos.Value.Container,
                 "Chat:Container must be different from Cosmos:Container.").ValidateOnStart();
         services.AddOptions<WebhookOptions>().BindConfiguration(WebhookOptions.Section).ValidateDataAnnotations().ValidateOnStart();
+        services.AddOptions<NotificationOptions>().BindConfiguration(NotificationOptions.Section).ValidateDataAnnotations()
+            .Validate<IOptions<CosmosOptions>, IOptions<ChatOptions>>((notifications, cosmos, chat) =>
+                notifications.Container != cosmos.Value.Container && notifications.Container != chat.Value.Container,
+                "Notifications:Container must be different from the execution and chat containers.").ValidateOnStart();
         services.AddOptions<HostingOptions>().BindConfiguration(HostingOptions.Section).ValidateDataAnnotations()
             .Validate(o => o.KnownProxies.All(value => System.Net.IPAddress.TryParse(value, out _)),
                 "Hosting:KnownProxies must contain IP addresses.")

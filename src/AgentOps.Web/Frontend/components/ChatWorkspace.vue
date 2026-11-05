@@ -7,7 +7,8 @@ const props = defineProps({
     token: { type: String, required: true },
     canSend: Boolean,
     maxLength: { type: Number, required: true },
-    historyLimit: { type: Number, required: true }
+    historyLimit: { type: Number, required: true },
+    initialSessionId: { type: String, default: "" }
 });
 const sessions = ref([]);
 const selected = ref(null);
@@ -27,6 +28,17 @@ const currentSession = computed(() => sessions.value.find(session => session.id 
 const title = computed(() => currentSession.value?.title ?? "Your next conversation");
 const formatTime = value => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 const messagesUrl = () => `${props.endpoint}/${encodeURIComponent(selected.value)}/messages`;
+let initialSelectionPending = Boolean(props.initialSessionId);
+
+function setSelection(session) {
+    const id = session?.id ?? null;
+    if (selected.value !== id) draft.value = session?.messageCount === 0 ? (session.initialDraft ?? "") : "";
+    selected.value = id;
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("sessionId", id);
+    else url.searchParams.delete("sessionId");
+    window.history.replaceState(null, "", url);
+}
 
 async function request(url, method = "GET", body) {
     const response = await fetch(url, {
@@ -85,7 +97,13 @@ async function refresh(more = false) {
     try {
         await readSessions(more);
         if (!more) {
-            if (!currentSession.value) selected.value = sessions.value[0]?.id ?? null;
+            const target = initialSelectionPending ? props.initialSessionId : selected.value;
+            if (target && !sessions.value.some(session => session.id === target)) {
+                const session = await request(`${props.endpoint}/${encodeURIComponent(target)}`);
+                sessions.value.unshift(session);
+            }
+            setSelection(sessions.value.find(session => session.id === target) ?? sessions.value[0]);
+            initialSelectionPending = false;
             if (selected.value && !currentSession.value?.isDeleting) await readMessages();
             else {
                 messages.value = [];
@@ -100,10 +118,9 @@ async function select(session) {
     if (busy.value || selected.value === session.id) return;
     loading.value = true;
     error.value = "";
-    selected.value = session.id;
+    setSelection(session);
     messages.value = [];
     hasOlder.value = false;
-    draft.value = "";
     try { if (!session.isDeleting) await readMessages(); }
     catch (failure) { error.value = failure.message; }
     finally { loading.value = false; }
@@ -116,7 +133,7 @@ async function createSession() {
     try {
         const session = await request(props.endpoint, "POST");
         sessions.value.unshift(session);
-        selected.value = session.id;
+        setSelection(session);
         messages.value = [];
         hasOlder.value = false;
         draft.value = "";
@@ -145,12 +162,12 @@ async function deleteSession() {
     try {
         await request(`${props.endpoint}/${encodeURIComponent(selected.value)}`, "DELETE");
         sessions.value = sessions.value.filter(session => session.id !== selected.value);
-        selected.value = null;
+        setSelection(null);
         messages.value = [];
         hasOlder.value = false;
         draft.value = "";
         await readSessions();
-        selected.value = sessions.value[0]?.id ?? null;
+        setSelection(sessions.value[0]);
         if (selected.value && !currentSession.value?.isDeleting) await readMessages();
     } catch (failure) {
         error.value = failure.message;
