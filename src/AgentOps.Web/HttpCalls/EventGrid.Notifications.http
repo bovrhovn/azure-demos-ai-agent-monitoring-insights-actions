@@ -1,0 +1,99 @@
+# Change url for your running instance (Properties\launchSettings.json).
+# Set Webhook__ApiKey in the HTTP client's process environment to the same value
+# as the application's Webhook:ApiKey. Never paste real keys into this file.
+@url = {{url}}
+@apiKey = {{apiKey}}
+
+# Event Grid schema: https://learn.microsoft.com/azure/event-grid/event-schema
+# Send a nonempty array. Each event below includes id, subject, eventType,
+# eventTime (UTC), data, dataVersion, topic and metadataVersion.
+# Custom event data is publisher-defined; BlobCreated uses Storage event data.
+# This endpoint acknowledges notifications only: no agents or actions are run.
+
+### Custom notification with nested data
+# Expected status: 200
+POST {{url}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+aeg-event-type: Notification
+
+[
+  {
+    "id": "http-custom-001",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo/providers/Microsoft.EventGrid/topics/demo",
+    "subject": "/demo/requests/001",
+    "eventType": "Demo.Requested",
+    "eventTime": "2026-11-05T07:00:00Z",
+    "data": {
+      "requestId": "demo-001",
+      "message": "Summarize application health",
+      "priority": 2,
+      "dryRun": true,
+      "tags": ["http-test", "observability"],
+      "context": { "service": "AgentOps.Web", "region": "local" }
+    },
+    "dataVersion": "1.0",
+    "metadataVersion": "1"
+  }
+]
+
+### Blob created notification
+# Expected status: 200
+POST {{url}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+aeg-event-type: Notification
+
+[
+  {
+    "id": "http-blob-001",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo/providers/Microsoft.Storage/storageAccounts/demostorage",
+    "subject": "/blobServices/default/containers/reports/blobs/health.json",
+    "eventType": "Microsoft.Storage.BlobCreated",
+    "eventTime": "2026-11-05T07:01:00Z",
+    "data": {
+      "api": "PutBlob",
+      "clientRequestId": "11111111-1111-1111-1111-111111111111",
+      "requestId": "22222222-2222-2222-2222-222222222222",
+      "eTag": "0x8DD15A69488FE5A",
+      "contentType": "application/json",
+      "contentLength": 256,
+      "blobType": "BlockBlob",
+      "url": "https://demostorage.blob.core.windows.net/reports/health.json",
+      "sequencer": "00000000000000000000000000000001",
+      "storageDiagnostics": { "batchId": "33333333-3333-3333-3333-333333333333" }
+    },
+    "dataVersion": "",
+    "metadataVersion": "1"
+  }
+]
+
+### Batch with different event types and data
+# Expected status: 200
+POST {{url}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+aeg-event-type: Notification
+
+[
+  {
+    "id": "http-batch-001",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo/providers/Microsoft.EventGrid/topics/demo",
+    "subject": "/demo/requests/002",
+    "eventType": "Demo.Requested",
+    "eventTime": "2026-11-05T07:02:00Z",
+    "data": { "requestId": "demo-002", "message": "Inspect failed dependencies", "dryRun": true },
+    "dataVersion": "1.0",
+    "metadataVersion": "1"
+  },
+  {
+    "id": "http-batch-002",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo/providers/Microsoft.EventGrid/topics/demo",
+    "subject": "/demo/reports/002",
+    "eventType": "Demo.ReportReady",
+    "eventTime": "2026-11-05T07:03:00Z",
+    "data": { "reportId": "report-002", "healthy": false, "failures": ["timeout", "unavailable"] },
+    "dataVersion": "1.0",
+    "metadataVersion": "1"
+  }
+]

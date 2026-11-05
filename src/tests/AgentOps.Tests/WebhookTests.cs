@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using AgentOps.Web;
 using AgentOps.Web.Infrastructure;
 using AgentOps.Web.Infrastructure.Options;
@@ -111,6 +113,56 @@ public sealed class WebhookTests
         await using var factory = new AppFactory(new Dictionary<string, string?> { ["Webhook:ApiKey"] = key });
         var start = () => factory.Client();
         start.Should().Throw<OptionsValidationException>().WithMessage("*ApiKey*");
+    }
+
+    public static IEnumerable<object[]> HttpCallSamples()
+    {
+        foreach (var file in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "HttpCalls"), "*.http").Order())
+        {
+            foreach (var block in Regex.Split(File.ReadAllText(file).ReplaceLineEndings("\n"), @"(?m)^### ").Skip(1))
+                yield return [Path.GetFileName(file) + ": " + block.Split('\n')[0], block];
+        }
+    }
+
+    [TestMethod]
+    [DynamicData(nameof(HttpCallSamples))]
+    public async Task HttpCallSampleReturnsDocumentedResponseWithoutActions(string sample, string block)
+    {
+        await using var factory = new AppFactory();
+        using var client = factory.Client();
+        var expectedStatus = Regex.Match(block, @"(?m)^# Expected status: (\d+)$");
+        expectedStatus.Success.Should().BeTrue(sample);
+        var requestStart = block.IndexOf("\nPOST ", StringComparison.Ordinal);
+        requestStart.Should().BeGreaterThanOrEqualTo(0, sample);
+        var parts = block[(requestStart + 1)..].Split("\n\n", 2);
+        parts.Should().HaveCount(2, sample);
+        var headers = parts[0].Split('\n');
+        var url = headers[0]["POST ".Length..].Replace("{{baseUrl}}", client.BaseAddress!.GetLeftPart(UriPartial.Authority));
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        var contentType = headers.Single(line => line.StartsWith("Content-Type: ", StringComparison.Ordinal))["Content-Type: ".Length..];
+        request.Content = new StringContent(parts[1].Trim(), Encoding.UTF8, contentType);
+        foreach (var header in headers.Skip(1).Where(line => !line.StartsWith("Content-Type:", StringComparison.Ordinal)))
+        {
+            var pair = header.Split(':', 2);
+            request.Headers.Add(pair[0], pair[1].Trim().Replace("{{apiKey}}", TestKey));
+        }
+
+        using var response = await client.SendAsync(request);
+        ((int)response.StatusCode).Should().Be(int.Parse(expectedStatus.Groups[1].Value), sample);
+        if (response.IsSuccessStatusCode)
+        {
+            using var events = JsonDocument.Parse(parts[1]);
+            var first = events.RootElement[0];
+            if (first.GetProperty("eventType").GetString() == "Microsoft.EventGrid.SubscriptionValidationEvent")
+            {
+                var result = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                result.Should().ContainSingle().Which.Should().Be(new KeyValuePair<string, string>(
+                    "validationResponse", first.GetProperty("data").GetProperty("validationCode").GetString()!));
+            }
+            else
+                (await response.Content.ReadAsStringAsync()).Should().BeEmpty(sample);
+        }
+        factory.Store.Writes.Should().BeEmpty(sample);
     }
 
     private static StringContent Json(string body) => new(body, Encoding.UTF8, "application/json");

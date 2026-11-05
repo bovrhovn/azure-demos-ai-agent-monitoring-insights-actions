@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\AgentOps.Web\AgentOps.Web.csproj" />
+    <None Include="..\..\AgentOps.Web\HttpCalls\*.http" Link="HttpCalls\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

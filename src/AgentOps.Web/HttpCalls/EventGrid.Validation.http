@@ -1,0 +1,30 @@
+# Match the application's Webhook:ApiKey using a process environment variable.
+@url = {{url}}
+@apiKey = {{apiKey}}
+# Send subscription validation alone, never mixed with notifications.
+# Required data: a nonempty string validationCode.
+# Expected response: {"validationResponse":"http-validation-code-001"}.
+# The handler echoes the code; it does not follow validationUrl.
+
+### Subscription validation handshake
+# Expected status: 200
+POST {{url}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+aeg-event-type: SubscriptionValidation
+
+[
+  {
+    "id": "http-validation-001",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/demo/providers/Microsoft.EventGrid/topics/demo",
+    "subject": "",
+    "eventType": "Microsoft.EventGrid.SubscriptionValidationEvent",
+    "eventTime": "2026-11-05T07:00:00Z",
+    "data": {
+      "validationCode": "http-validation-code-001",
+      "validationUrl": "https://example.invalid/eventgrid/validate"
+    },
+    "dataVersion": "1.0",
+    "metadataVersion": "1"
+  }
+]

@@ -1,0 +1,75 @@
+# Negative tests: the listed error status is the expected successful test result.
+# Match the application's Webhook:ApiKey using a process environment variable.
+@baseUrl = {{url}}
+@apiKey = {{apiKey}}
+
+# The receiver checks the array/eventType and validationCode, not the complete
+# publisher schema. These cases isolate its current validation boundaries.
+# CloudEvents objects (specversion/type/source) are not supported here.
+
+### Missing API key
+# Expected status: 401
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+
+[{"eventType":"Demo.Requested","data":{}}]
+
+### Wrong content type
+# Expected status: 415
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: text/plain
+X-Api-Key: {{apiKey}}
+
+[{"eventType":"Demo.Requested","data":{}}]
+
+### Object instead of an event array
+# Expected status: 400
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{"eventType":"Demo.Requested","data":{}}
+
+### Empty event array
+# Expected status: 400
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+[]
+
+### Missing eventType
+# Expected status: 400
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+[{"id":"http-invalid-001","subject":"/demo/invalid","eventTime":"2026-11-05T07:00:00Z","data":{}}]
+
+### Missing validationCode
+# Expected status: 400
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+aeg-event-type: SubscriptionValidation
+
+[{"eventType":"Microsoft.EventGrid.SubscriptionValidationEvent","data":{}}]
+
+### Validation mixed with a notification
+# Expected status: 400
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+[
+  {"eventType":"Microsoft.EventGrid.SubscriptionValidationEvent","data":{"validationCode":"http-validation-code-001"}},
+  {"eventType":"Demo.Requested","data":{"message":"Must not be accepted with validation"}}
+]
+
+### Malformed JSON
+# Expected status: 400
+POST {{baseUrl}}/api/webhooks/eventgrid
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+[{"eventType":"Demo.Requested","data":
