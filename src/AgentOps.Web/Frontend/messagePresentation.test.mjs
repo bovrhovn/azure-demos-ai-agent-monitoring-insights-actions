@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { inlineParts, presentMessage } from "./messagePresentation.mjs";
+
+const mixedReport = readFileSync(new URL("./messagePresentation.fixture.txt", import.meta.url), "utf8").replace(/\r\n?/g, "\n").trim();
 
 const record = (number, severity = "3") => `${number}) reference: reference-${number}
    timestamp: 2026-11-04T12:38:41.1555793+00:00
@@ -146,4 +149,61 @@ test("documentation URLs become safe links while code, unsafe schemes and HTML r
     assert.deepEqual(inlineParts(`(${url})`).map(part => part.text), ["(", url, ")"]);
     const unsafe = "[Run](javascript:alert(1)) <script>alert(1)</script>";
     assert.deepEqual(inlineParts(unsafe), [{ tag: "span", text: unsafe }]);
+});
+
+test("mixed Insights reports structure query windows, exception context and trace entries without inventing evidence", () => {
+    const blocks = presentMessage(mixedReport);
+    assert.deepEqual(blocks.map(block => block.kind), ["paragraph", "queryWindows", "reportHeading", "report", "report"]);
+    assert.deepEqual(blocks[1].windows, [
+        { source: "Exceptions", start: "2026-11-05T07:49:55.1444109Z", end: "2026-11-05T08:49:55.1444109Z" },
+        { source: "Traces", start: "2026-11-05T07:50:03.818465Z", end: "2026-11-05T08:50:03.818465Z" }
+    ]);
+    const exception = blocks[3];
+    assert.equal(exception.category, "exceptions");
+    assert.deepEqual(exception.parts[0].fields, [
+        { label: "Count", value: "1" },
+        { label: "Reference", value: "2f76713e26bb459c933b9695e478b7af" },
+        { label: "Timestamp (UTC)", value: "2026-11-05T08:44:45.6292424Z" }
+    ]);
+    assert.match(exception.parts.find(part => part.kind === "summary").text, /SocketException.*localhost:8081/);
+    assert.match(exception.parts.find(part => part.kind === "details").text, /truncated: true/);
+    assert.match(exception.parts.find(part => part.kind === "interpretation").text, /connection was refused/);
+    const traces = blocks[4];
+    assert.equal(traces.title, "Traces (7 rows, severity >= Warning)");
+    assert.equal(traces.parts[0].fields[0].value, "7 (no critical/exceptional traces returned in the window)");
+    const entries = traces.parts.find(part => part.kind === "entries").entries;
+    assert.equal(entries.length, 4, "only four detailed records were supplied, not seven");
+    assert.equal(entries[0].timestamp, "2026-11-05T08:48:46.6107445Z");
+    assert.equal(entries[0].reference, "30a1fc987996438cae731614a4d1b574");
+    assert.equal(entries[0].summary, '"Event Grid webhook rejected an invalid API key."');
+    assert.ok(entries.every(entry => !Object.hasOwn(entry, "severity")), "a minimum severity filter is not a per-record severity");
+    assert.match(traces.parts.find(part => part.kind === "paragraph").text, /cfdd615a8da74d53a3fc15b4cdb4165f, d644ba2480594fe4b694aeba3d90973c, adc87c0307414ea4b0d792b78a9811c5/);
+    assert.match(traces.parts.find(part => part.kind === "interpretation").text, /missing implementation\/feature-flag/);
+});
+
+test("report parsing handles Markdown labels and wrapped context while respecting later sections and fences", () => {
+    const formatted = mixedReport.replace("Exceptions (1 row)", "## **Exceptions (1 row)**")
+        .replace("Count: 1", "**Count:** 1").replace("Reference: 2f", "**Reference**: 2f")
+        .replace("Details: Exception originates", "**Details:** Exception originates\n  More provider context.")
+        .replace("Traces (7 rows, severity >= Warning)", "## Traces (7 rows, severity >= Warning)")
+        .replace("2026-11-05T08:48:46.6107445Z — ref", "- 2026-11-05T08:48:46.6107445Z — ref");
+    const blocks = presentMessage((formatted + "\n\n## Next steps\n\n- Inspect configuration.").replaceAll("\n", "\r\n"));
+    assert.equal(blocks.filter(block => block.kind === "report").length, 2);
+    assert.match(blocks[3].parts.find(part => part.kind === "details").text, /\n  More provider context\./);
+    assert.equal(blocks.at(-1).kind, "nextSteps");
+    assert.deepEqual(blocks.at(-1).items, ["Inspect configuration."]);
+    assert.equal(presentMessage(`\`\`\`text\n${mixedReport}\n\`\`\``)[0].text, mixedReport);
+});
+
+test("unrecognized report content and malformed trace dates remain readable instead of disappearing", () => {
+    const blocks = presentMessage("Exceptions (1 row)\nAn unstructured explanation.\n\n## Other\n\nTraces (2 rows)\nCount: 2\nnot-a-date — ref abc — keep this text\n2026-99-05T08:48:46Z — ref def — keep invalid dates\nInterpretation: Review manually.");
+    assert.equal(blocks[0].kind, "paragraph");
+    assert.match(blocks[0].text, /An unstructured explanation/);
+    const report = blocks.find(block => block.kind === "report");
+    assert.match(report.parts.find(part => part.kind === "paragraph").text, /not-a-date.*keep this text/);
+    assert.match(JSON.stringify(report), /2026-99-05T08:48:46Z/);
+    assert.ok(report.parts.every(part => part.kind !== "entries"));
+    const invalidWindow = presentMessage("Exceptions: not-a-date — 2026-11-05T08:49:55Z");
+    assert.equal(invalidWindow[0].kind, "paragraph");
+    assert.match(invalidWindow[0].text, /not-a-date/);
 });

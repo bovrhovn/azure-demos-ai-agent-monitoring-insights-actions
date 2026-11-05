@@ -7,6 +7,12 @@ const unquote = value => value.replace(/^`([^`]+)`$/, "$1");
 const cells = line => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
 const tableDivider = line => line.includes("|") && cells(line).every(cell => /^:?-{3,}:?$/.test(cell));
 const diagnosticField = /^(?:\*\*)?(query window(?: \(UTC\))?|exception reference|timestamp(?: \(UTC\))?|severity)(?:\*\*)?\s*:(?:\*\*)?\s*(.+)$/i;
+const isoTimestamp = String.raw`\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)`;
+const windowLine = new RegExp(String.raw`^(Exceptions|Traces)\s*:\s*(${isoTimestamp})\s+[—–-]\s+(${isoTimestamp})$`, "i");
+const traceLine = new RegExp(String.raw`^(?:[-*]\s+)?(${isoTimestamp})\s+[—–-]\s+ref\s+(\S+)\s+[—–-]\s+(.+)$`, "i");
+const reportField = /^(?:[-*]\s+)?(?:\*\*)?(count|reference|timestamp(?: \(UTC\))?|summary|details|interpretation|key entries(?: \([^)]*\))?)(?:\*\*)?\s*:(?:\*\*)?\s*(.*?)\s*$/i;
+const sectionTitle = line => line.trim().replace(/^#{1,6}\s+/, "").replace(/\*\*/g, "").replace(/:\s*$/, "");
+const validTimestamp = value => !Number.isNaN(Date.parse(value));
 
 export function inlineParts(text) {
     const parts = [];
@@ -43,12 +49,77 @@ function severityInfo(value) {
 }
 
 function sectionAt(line) {
-    const title = line.trim().replace(/^#{1,6}\s+/, "").replace(/\*\*/g, "").replace(/:\s*$/, "");
+    const title = sectionTitle(line);
     if (/^(?:(?:suggested|recommended)\s+)?next steps(?:\s*\([^)]*\))?$/i.test(title)) return { kind: "nextSteps", title };
+    if (/^summary\s+\([^)]*\)$/i.test(title)) return { kind: "reportHeading", title };
     if (/^summary(?: message)?$/i.test(title)) return { kind: "summary", title };
     if (/^(?:top )?stack (?:frames|trace)(?:\s*\([^)]*\))?$/i.test(title)) return { kind: "stack", title };
     if (/^notes$/i.test(title)) return { kind: "notes", title };
     return null;
+}
+
+function queryWindowAt(line) {
+    const match = line.trim().replace(/^[-*]\s+/, "").replace(/\*\*/g, "").match(windowLine);
+    return match && validTimestamp(match[2]) && validTimestamp(match[3])
+        ? { source: match[1], start: match[2], end: match[3] } : null;
+}
+
+function queryWindowsAt(lines, start) {
+    const windows = [];
+    let end = start;
+    while (end < lines.length) {
+        const window = queryWindowAt(lines[end]);
+        if (window) { windows.push(window); end++; }
+        else if (!lines[end].trim() && lines[end + 1] && queryWindowAt(lines[end + 1])) end++;
+        else break;
+    }
+    return windows.length ? { end, block: { kind: "queryWindows", windows } } : null;
+}
+
+function reportTitleAt(line) {
+    const title = sectionTitle(line);
+    const match = title.match(/^(Exceptions|Traces)\s+\(\d+\s+rows?[^)]*\)$/i);
+    return match ? { title, category: match[1].toLowerCase() } : null;
+}
+
+function reportAt(lines, start) {
+    const title = reportTitleAt(lines[start]);
+    if (!title) return null;
+    const parts = [];
+    let end = start + 1;
+    let current = null;
+    while (end < lines.length) {
+        const line = lines[end];
+        const field = line.trim().match(reportField);
+        if (reportTitleAt(line) || line.match(fence) || queryWindowAt(line) ||
+            (!field && (line.match(heading) || sectionAt(line) || diagnosticAt(lines, end)))) break;
+        const trace = line.trim().match(traceLine);
+        if (trace && validTimestamp(trace[1])) {
+            const entry = { timestamp: trace[1], reference: trace[2], summary: trace[3] };
+            if (parts.at(-1)?.kind === "entries") parts.at(-1).entries.push(entry);
+            else parts.push({ kind: "entries", entries: [entry] });
+            current = null;
+        } else if (field) {
+            const label = field[1];
+            const value = unquote(field[2]);
+            if (/^(count|reference|timestamp(?: \(UTC\))?)$/i.test(label)) {
+                if (parts.at(-1)?.kind !== "fields") parts.push({ kind: "fields", fields: [] });
+                parts.at(-1).fields.push({ label, value });
+                current = null;
+            } else {
+                current = { kind: /^key entries/i.test(label) ? "entryHeading" : label.toLowerCase(), label, text: value };
+                parts.push(current);
+            }
+        } else if (current) current.text += `\n${line}`;
+        else if (line.trim()) {
+            current = { kind: "paragraph", text: line };
+            parts.push(current);
+        }
+        end++;
+    }
+    for (const part of parts) if (part.text !== undefined) part.text = part.text.trim();
+    if (!parts.some(part => ["fields", "summary", "entries"].includes(part.kind))) return null;
+    return { end, block: { kind: "report", ...title, parts } };
 }
 
 function diagnosticAt(lines, start) {
@@ -69,10 +140,12 @@ function diagnosticAt(lines, start) {
 }
 
 function sectionBody(lines, start, section) {
+    if (section.kind === "reportHeading") return { end: start + 1, block: section };
     const body = [];
     let end = start + 1;
     while (end < lines.length && !sectionAt(lines[end]) && !lines[end].match(heading) &&
-        !lines[end].match(fence) && !diagnosticAt(lines, end) && !telemetryAt(lines, end)) {
+        !lines[end].match(fence) && !diagnosticAt(lines, end) && !telemetryAt(lines, end) &&
+        !queryWindowAt(lines[end]) && !reportAt(lines, end)) {
         if (lines[end].includes("|") && lines[end + 1] && tableDivider(lines[end + 1])) break;
         body.push(lines[end++]);
     }
@@ -161,6 +234,12 @@ export function presentMessage(content) {
             index = diagnostic.end;
             continue;
         }
+        const report = queryWindowsAt(lines, index) ?? reportAt(lines, index);
+        if (report) {
+            blocks.push(report.block);
+            index = report.end;
+            continue;
+        }
         const section = sectionAt(line);
         if (section) {
             const result = sectionBody(lines, index, section);
@@ -212,6 +291,7 @@ export function presentMessage(content) {
         while (index < lines.length && lines[index].trim() && !lines[index].match(heading) &&
             !lines[index].match(listItem) && !lines[index].match(fence) && !telemetryAt(lines, index) &&
             !sectionAt(lines[index]) && !diagnosticAt(lines, index) &&
+            !queryWindowAt(lines[index]) && !reportAt(lines, index) &&
             !(lines[index].includes("|") && lines[index + 1] && tableDivider(lines[index + 1]))) {
             paragraph.push(lines[index++]);
         }

@@ -13,6 +13,99 @@ public sealed class ChatBrowserTests
 {
     [TestMethod]
     [TestCategory("Browser")]
+    public async Task ChatStructuresMixedInsightsReportsAndPreservesUtcEvidenceCopyAndMobileLayout()
+    {
+        if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
+            Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
+        var reply = (await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "telemetry-report.txt"))).Trim();
+        await using var factory = new AppFactory();
+        factory.UseKestrel();
+        using var client = factory.CreateClient();
+        var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new()
+        {
+            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"),
+            Headless = true
+        });
+        await using var context = await browser.NewContextAsync(new()
+        {
+            ExtraHTTPHeaders = new Dictionary<string, string> { ["X-Test-Role"] = "AgentOps.Operator" },
+            ViewportSize = new() { Width = 1440, Height = 1100 },
+            Locale = "en-US",
+            TimezoneId = "America/Los_Angeles"
+        });
+        await context.GrantPermissionsAsync(["clipboard-read", "clipboard-write"]);
+        var page = await context.NewPageAsync();
+        var errors = new List<string>();
+        page.PageError += (_, error) => errors.Add(error);
+        await page.GotoAsync(address + RouteConstants.ChatPage);
+        await page.GetByRole(AriaRole.Button, new() { Name = "New session" }).ClickAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Textbox)).ToBeEnabledAsync();
+        var session = factory.Chats.Sessions.Values.Single();
+        factory.Chats.Messages.Enqueue(new("mixed-report", session.OwnerId, session.Id, "agent", reply, DateTimeOffset.UtcNow, 1, "test-deployment"));
+        await page.ReloadAsync();
+        var agent = page.GetByRole(AriaRole.Article, new() { Name = "Agent response" }).First;
+        var windows = agent.GetByRole(AriaRole.Region, new() { Name = "Query windows", Exact = true });
+        await Assertions.Expect(windows.Locator("dt")).ToHaveTextAsync(["Exceptions", "Traces"]);
+        await Assertions.Expect(windows.Locator("time").First).ToHaveAttributeAsync("datetime", "2026-11-05T07:49:55.1444109Z");
+        await Assertions.Expect(windows.Locator("time").First).ToContainTextAsync("7:49:55 AM");
+        await windows.Locator("summary").First.ClickAsync();
+        await Assertions.Expect(windows.Locator("details > code").First).ToContainTextAsync("2026-11-05T07:49:55.1444109Z");
+        var exception = agent.GetByRole(AriaRole.Region, new() { Name = "Exceptions (1 row)", Exact = true });
+        await Assertions.Expect(exception.Locator(".chat-report-count dd")).ToHaveTextAsync("1");
+        await Assertions.Expect(exception.Locator(".chat-report-fields dd").Nth(1)).ToHaveTextAsync("2f76713e26bb459c933b9695e478b7af");
+        await Assertions.Expect(exception.Locator(".chat-report-fields dd").Nth(2)).ToHaveTextAsync("2026-11-05T08:44:45.6292424Z");
+        await Assertions.Expect(exception.Locator(".chat-report-summary")).ToContainTextAsync("localhost:8081");
+        var details = exception.Locator(".chat-report-details");
+        await Assertions.Expect(details.Locator("p")).Not.ToBeVisibleAsync();
+        await details.Locator("summary").FocusAsync();
+        await details.Locator("summary").PressAsync("Enter");
+        await Assertions.Expect(details.Locator("p")).ToContainTextAsync("truncated: true");
+        await Assertions.Expect(exception.GetByRole(AriaRole.Complementary, new() { Name = "Interpretation" }))
+            .ToContainTextAsync("connection was refused");
+        var traces = agent.GetByRole(AriaRole.Region, new() { Name = "Traces (7 rows, severity >= Warning)", Exact = true });
+        await Assertions.Expect(traces.Locator(".chat-report-count dd")).ToHaveTextAsync("7 (no critical/exceptional traces returned in the window)");
+        var entries = traces.Locator(".chat-trace-entries > li");
+        await Assertions.Expect(entries).ToHaveCountAsync(4);
+        await Assertions.Expect(entries.First.Locator("time")).ToHaveAttributeAsync("datetime", "2026-11-05T08:48:46.6107445Z");
+        await entries.First.Locator("summary").ClickAsync();
+        await Assertions.Expect(entries.First.Locator("dd").First).ToHaveTextAsync("30a1fc987996438cae731614a4d1b574");
+        await Assertions.Expect(entries.First.Locator("dd").Nth(1)).ToHaveTextAsync("2026-11-05T08:48:46.6107445Z");
+        await Assertions.Expect(traces.Locator(".chat-report-context")).ToContainTextAsync("adc87c0307414ea4b0d792b78a9811c5");
+        await Assertions.Expect(entries.Locator(".chat-severity")).ToHaveCountAsync(0);
+        await agent.GetByRole(AriaRole.Button, new() { Name = "Copy agent message" }).ClickAsync();
+        await Assertions.Expect(agent.GetByRole(AriaRole.Button, new() { Name = "Message copied" })).ToBeVisibleAsync();
+        (await page.EvaluateAsync<string>("navigator.clipboard.readText()")).ReplaceLineEndings("\n").Should().Be(reply.ReplaceLineEndings("\n"));
+        if (Environment.GetEnvironmentVariable("AGENTOPS_MIXED_REPORT_SCREENSHOT") is { Length: > 0 } screenshot)
+        {
+            await page.Locator(".chat-workspace").EvaluateAsync("element => { element.style.height = 'auto'; }");
+            await page.Locator(".chat-timeline").EvaluateAsync("element => { element.style.overflow = 'visible'; }");
+            await page.ScreenshotAsync(new() { Path = screenshot, FullPage = true });
+            await page.ReloadAsync();
+        }
+        await page.ReloadAsync();
+        await Assertions.Expect(entries).ToHaveCountAsync(4);
+        factory.Chats.Messages.Enqueue(new("unsafe-report", session.OwnerId, session.Id, "agent",
+            "Exceptions (1 row)\nCount: 1\nSummary: <img src=x onerror=alert(1)>\nDetails: <script>alert(1)</script>\nInterpretation: [Run](javascript:alert(1))",
+            DateTimeOffset.UtcNow, 2, "test-deployment"));
+        await page.ReloadAsync();
+        var unsafeReport = page.GetByRole(AriaRole.Article, new() { Name = "Agent response" }).Last;
+        await Assertions.Expect(unsafeReport.Locator(".chat-report-summary")).ToContainTextAsync("<img src=x onerror=alert(1)>");
+        await unsafeReport.Locator(".chat-report-details summary").ClickAsync();
+        await Assertions.Expect(unsafeReport.Locator(".chat-report-details")).ToContainTextAsync("<script>alert(1)</script>");
+        await Assertions.Expect(unsafeReport.Locator("img, script, a")).ToHaveCountAsync(0);
+        await page.SetViewportSizeAsync(390, 844);
+        (await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > window.innerWidth")).Should().BeFalse();
+        var timeline = page.GetByRole(AriaRole.Region, new() { Name = "Message timeline" });
+        (await timeline.EvaluateAsync<bool>("element => element.scrollWidth > element.clientWidth")).Should().BeFalse();
+        await windows.ScrollIntoViewIfNeededAsync();
+        await Assertions.Expect(windows).ToBeVisibleAsync();
+        errors.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    [TestCategory("Browser")]
     public async Task ChatFormatsTelemetryAndOtherRepliesSafelyAndPreservesOriginalCopyAcrossReloadAndMobile()
     {
         if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")

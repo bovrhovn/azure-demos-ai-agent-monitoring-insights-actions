@@ -12,12 +12,69 @@ const InlineText = defineComponent({
 const formatTime = value => new Date(value).toLocaleString(undefined, {
     dateStyle: "medium", timeStyle: "medium"
 });
+const formatUtcTime = value => new Date(value).toLocaleString(undefined, {
+    dateStyle: "medium", timeStyle: "medium", timeZone: "UTC"
+});
 </script>
 
 <template>
     <div class="agent-content">
         <template v-for="(block, index) in blocks" :key="index">
-            <section v-if="block.kind === 'nextSteps'" class="chat-next-steps" aria-label="Suggested next steps">
+            <section v-if="block.kind === 'queryWindows'" class="chat-query-windows" aria-label="Query windows">
+                <header><span class="eyebrow">APPLICATION INSIGHTS</span><h3>Query windows <span>UTC</span></h3></header>
+                <dl>
+                    <div v-for="(window, windowIndex) in block.windows" :key="windowIndex">
+                        <dt>{{ window.source }}</dt>
+                        <dd>
+                            <span class="chat-window-time"><span>From</span><time :datetime="window.start" :title="window.start">{{ formatUtcTime(window.start) }}</time></span>
+                            <span class="chat-window-time"><span>To</span><time :datetime="window.end" :title="window.end">{{ formatUtcTime(window.end) }}</time></span>
+                            <details><summary>Exact timestamps</summary><code>{{ window.start }} &mdash; {{ window.end }}</code></details>
+                        </dd>
+                    </div>
+                </dl>
+            </section>
+            <h3 v-else-if="block.kind === 'reportHeading'" class="chat-report-heading">{{ block.title }}</h3>
+            <section v-else-if="block.kind === 'report'" class="chat-insights-report" :class="`chat-report-${block.category}`"
+                     :aria-label="block.title">
+                <header class="chat-report-header">
+                    <span class="chat-report-marker" aria-hidden="true">{{ block.category === "exceptions" ? "!" : "\u2261" }}</span>
+                    <h3>{{ block.title }}</h3>
+                </header>
+                <template v-for="(part, partIndex) in block.parts" :key="partIndex">
+                    <dl v-if="part.kind === 'fields'" class="chat-report-fields">
+                        <div v-for="(field, fieldIndex) in part.fields" :key="fieldIndex" :class="{ 'chat-report-count': /^count$/i.test(field.label) }">
+                            <dt>{{ field.label }}</dt>
+                            <dd><code v-if="/^reference$/i.test(field.label)">{{ field.value }}</code><template v-else>{{ field.value }}</template></dd>
+                        </div>
+                    </dl>
+                    <div v-else-if="part.kind === 'summary'" class="chat-report-summary">
+                        <span class="eyebrow">{{ part.label }}</span><p><InlineText :text="part.text" /></p>
+                    </div>
+                    <details v-else-if="part.kind === 'details'" class="chat-report-details">
+                        <summary>{{ part.label }}<span aria-hidden="true">&#8964;</span></summary>
+                        <p><InlineText :text="part.text" /></p>
+                    </details>
+                    <aside v-else-if="part.kind === 'interpretation'" class="chat-report-interpretation" :aria-label="part.label">
+                        <strong>{{ part.label }}</strong><p><InlineText :text="part.text" /></p>
+                    </aside>
+                    <div v-else-if="part.kind === 'entryHeading'" class="chat-report-entry-heading">
+                        <h4>{{ part.label }}</h4><p v-if="part.text"><InlineText :text="part.text" /></p>
+                    </div>
+                    <ol v-else-if="part.kind === 'entries'" class="chat-trace-entries" aria-label="Trace entries">
+                        <li v-for="(entry, entryIndex) in part.entries" :key="entryIndex">
+                            <time :datetime="entry.timestamp" :title="entry.timestamp">{{ formatUtcTime(entry.timestamp) }} <span>UTC</span></time>
+                            <p><InlineText :text="entry.summary" /></p>
+                            <details class="chat-trace-reference">
+                                <summary>Trace reference</summary>
+                                <dl><div><dt>Reference</dt><dd><code>{{ entry.reference }}</code></dd></div>
+                                    <div><dt>Timestamp (UTC)</dt><dd><code>{{ entry.timestamp }}</code></dd></div></dl>
+                            </details>
+                        </li>
+                    </ol>
+                    <p v-else class="chat-report-context"><InlineText :text="part.text" /></p>
+                </template>
+            </section>
+            <section v-else-if="block.kind === 'nextSteps'" class="chat-next-steps" aria-label="Suggested next steps">
                 <header class="chat-section-heading">
                     <span class="chat-section-icon" aria-hidden="true">&#8599;</span>
                     <h3><InlineText :text="block.title" /></h3>

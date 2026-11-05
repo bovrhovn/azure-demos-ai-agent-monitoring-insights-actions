@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\AgentOps.Web\AgentOps.Web.csproj" />
     <None Include="..\..\AgentOps.Web\HttpCalls\*.http" Link="HttpCalls\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\AgentOps.Web\Frontend\messagePresentation.fixture.txt" Link="Fixtures\telemetry-report.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
