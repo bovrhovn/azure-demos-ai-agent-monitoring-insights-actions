@@ -92,7 +92,7 @@ onUnmounted(() => {
 
 <template>
     <div class="section-title">
-        <h2>{{ trigger === "Schedule" ? "Scheduled execution history" : "Endpoint runs" }}</h2>
+        <h2>Scheduled execution history</h2>
         <span id="live-status" class="connection-status" :class="{ connected }" role="status">{{ status }}</span>
     </div>
     <QueryNotice :error="error" :busy="busy" @retry="refresh()" />

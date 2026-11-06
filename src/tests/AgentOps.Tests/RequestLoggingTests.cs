@@ -101,7 +101,6 @@ public sealed class RequestLoggingTests
 
     [TestMethod]
     [DataRow(RouteConstants.SchedulesPage, typeof(SchedulesModel), "Schedules page loaded")]
-    [DataRow(RouteConstants.ExecutionsPage, typeof(ExecutionsModel), "Executions page loaded")]
     [DataRow(RouteConstants.IndexPage, typeof(IndexModel), "Overview page loaded")]
     [DataRow(RouteConstants.LogsPage, typeof(LogsModel), "Application logs viewer loaded")]
     public async Task PagesLogOneMeaningfulCompletionWithoutRecordContents(string path, Type category, string message)
@@ -127,7 +126,7 @@ public sealed class RequestLoggingTests
             entry.State["Enabled"].Should().Be(true);
             entry.State["ScheduleFound"].Should().Be(true);
         }
-        if (category == typeof(SchedulesModel) || category == typeof(ExecutionsModel))
+        if (category == typeof(SchedulesModel))
         {
             entry.State["ExecutionCount"].Should().Be(1);
             entry.State["HistoryLimit"].Should().Be(2);
@@ -140,7 +139,9 @@ public sealed class RequestLoggingTests
     {
         await using var factory = new AppFactory(new Dictionary<string, string?>
         {
-            ["Insights:LogLimit"] = "3", ["Insights:LookbackMinutes"] = "37", ["Analytics:PageSize"] = "2"
+            ["Insights:LogLimit"] = "3",
+            ["Insights:LookbackMinutes"] = "37",
+            ["Analytics:PageSize"] = "2"
         });
         factory.Insights.Logs = Enumerable.Range(0, 5).Select(index =>
             new InsightLog(DateTimeOffset.UtcNow, "2", "private telemetry", "private operation")).ToArray();

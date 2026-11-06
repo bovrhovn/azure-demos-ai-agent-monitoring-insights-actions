@@ -1,12 +1,13 @@
 # Azure Deployment Plan
 
-Status: Deployed
+Status: Validated
 Generated: 2026-10-21
 
 ## 1. Project Overview
 
-Deploy the current working-tree application, including the scheduled error investigation
-runner and human-review notification proposals, to the existing agentops-web Container App.
+Deploy the current working-tree application with only the Endpoint runs page and
+navigation removed to the existing agentops-web Container App. Preserve the execution
+API, scheduled investigations, shared execution feed, hub and authoritative Cosmos history.
 Preserve existing runtime settings, secrets, identity, ingress, probes and scale.
 The current approved update builds a new immutable image and updates only the application
 revision. The notifications container already exists. Do not provision resources, rotate
@@ -19,6 +20,8 @@ credentials, modify Event Grid, or invoke production diagnostic/test actions.
 - User confirmed this target and implementation/deployment on 2026-10-21.
 - Current image-only rollout explicitly authorized on 2026-11-05; no resource
   deletions, credential rotations or production test-data generation are authorized.
+- Endpoint runs UI removal and production image-only redeployment explicitly approved
+  on 2026-11-06, including the existing subscription, Sweden Central app and registry.
 - Never write credential values into this record.
 
 ## 3. Components
@@ -61,6 +64,62 @@ Preserve the existing confidential Entra credential without reading or rotating 
 Historical PostgreSQL cleanup is complete; no deletion is part of this update.
 
 ## 7. Validation Proof
+
+### Endpoint runs UI removal image-only update (2026-11-06)
+
+- All validation checks pass requires:
+  - Core Validation: fresh CLI/authentication, API-version-matched live snapshot
+    compilation, ARM provider validation and what-if with zero changes.
+  - Docker Build: existing ACR BuildKit task, current disk context, unique tag,
+    ABAC caller authentication and independently verified digest.
+  - Azure Policy Validation: scoped policy review and ARM provider validation.
+  - Frontend tests/build, relevant managed Release tests including authenticated
+    removed-route checks, API authorization/lifecycle and scheduled browser feeds.
+  - Static role declaration verification and live role checks, safe before/after
+    configuration comparison, health and served-asset proof.
+- Fresh validation on 2026-11-06; historical release proof below is not reused.
+- Regression gate was demonstrated before removal: both authenticated old-route
+  absence tests failed. After removal, focused UI/API/logging/browser suite passed:
+  62 passed, zero skipped/failed. Full Release suite with browser checks enabled:
+  274 passed, 5 explicitly opt-in external tests skipped, zero failures (279 total).
+  Skips: four Cosmos emulator tests and one live Azure telemetry/model test.
+- `scripts/test.ps1` completed clean frontend install, 15 frontend tests and Vite
+  build using the approved npm proxy via process environment. Its initial managed
+  compile exposed an overview link to the removed route; that link and an obsolete
+  history-page test were corrected before the successful Release suites.
+- Touched C# files pass `dotnet format --verify-no-changes --no-restore`; diff
+  whitespace validation passes. No infrastructure templates were changed.
+- Core helper `validate-deployment.ps1` passed CLI/authentication, API-2025-01-01
+  snapshot compilation, ARM provider validation and what-if: Create 0, Modify 0,
+  Delete 0. Snapshot contents remain only in process memory, passed through a
+  Bicepparam environment expression; artifacts contain no production config values.
+  An initial secure-object what-if masked values as unknown modifications; the
+  resolvable in-memory object removed these false differences. No template applied.
+- Scoped CLI policy inspection returned no assignments; provider/policy validation
+  passed. Azure MCP policy inspection used another identity and returned 403; the
+  approved authenticated CLI succeeded without changing permissions.
+- Static roles verified in `azure/main.bicep`, `azure/modules/registry-access.bicep`
+  and `azure/modules/cosmos-data.bicep`: registry ABAC Repository Reader, vault
+  Secrets User, Insights Monitoring Reader, project Foundry User, database Cosmos
+  Data Contributor. Existing live roles and managed environment readiness confirmed.
+- Safe rollback baseline: `agentops-web--inbox-20261106-1105`, image
+  `bovrhovncr.azurecr.io/agent-observatory@sha256:cb07a46d0b1733914ebeae0f19750a8e06a4f1f75c810dfec58c52e1d5831973`.
+  One replica, Single mode and 24 group resource IDs captured; normalized config
+  hashes exclude only image/revisionSuffix. No secret values were fetched.
+- ACR BuildKit task `dt1g` submitted from 112 current disk inputs, with private,
+  secret, git/Squad, dependency and generated-output paths excluded. The existing
+  task recipe uses a public npm registry-only BuildKit secret (no credentials),
+  without altering tracked Docker/config files. ABAC flag verified at
+  `azure/scripts/Deploy-All.ps1:197`: `--source-acr-auth-id '[caller]'`.
+- ACR run `dt1g` Succeeded at 2026-11-06T13:11:09Z. Unique tag
+  `no-endpoint-ui-20261106131005`; task output and independent
+  `az acr repository show --image` agree on immutable digest:
+  `sha256:ba8de6e91d96d1e31c12872dad6f51428aefab14a71ec2d80458b1df814d2d21`.
+  All 112 build-input SHA-256 values match current disk source. CLI streaming logs
+  hit a Windows character-encoding error; management-plane task success and
+  independently resolved repository digest provide successful build proof.
+- Fresh preparation/validation checks pass with no unresolved deployment failures.
+  Production action APIs, chat, diagnostic events and model calls were not invoked.
 
 ### Scheduled error investigations image-only update (2026-11-05)
 

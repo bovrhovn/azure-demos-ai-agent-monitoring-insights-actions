@@ -7,7 +7,6 @@ public static class RouteConstants
     public const string IndexPage = "/Info/Index";
     public const string ErrorPage = "/Info/Error";
     public const string SchedulesPage = "/Analytics/Schedules";
-    public const string ExecutionsPage = "/Analytics/Executions";
     public const string LogsPage = "/Analytics/Logs";
     public const string ChatPage = "/Chat/Index";
     public const string ChatSessions = "/ui/chat/sessions";
@@ -18,7 +17,6 @@ public static class RouteConstants
     public const string LegacyIndexPage = "/Index";
     public const string LegacyErrorPage = "/Error";
     public const string LegacySchedulesPage = "/Schedules";
-    public const string LegacyExecutionsPage = "/Executions";
     public const string LegacyLogsPage = "/Logs";
     public const string ExecutionHub = "/hubs/executions";
     public const string ExecutionHistory = "/ui/executions";

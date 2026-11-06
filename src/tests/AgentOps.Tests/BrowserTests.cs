@@ -17,7 +17,7 @@ public sealed class BrowserTests
 {
     [TestMethod]
     [TestCategory("Browser")]
-    public async Task RazorUiRendersResponsivelyAndReceivesLiveEndpointExecution()
+    public async Task RazorUiRendersResponsivelyAndReconcilesScheduledHistoryWithoutEndpointRuns()
     {
         if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
             Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
@@ -66,18 +66,23 @@ public sealed class BrowserTests
             "the source badge should sit beside the account without overlap");
         await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Level = 1 })).ToContainTextAsync("A clearer view.");
         await Assertions.Expect(page.Locator(".metric").First).ToContainTextAsync("42");
-        await page.GetByRole(AriaRole.Navigation, new() { Name = "Primary navigation" })
-            .GetByRole(AriaRole.Link, new() { Name = "Endpoint runs" }).ClickAsync();
-        page.Url.Should().Be(address + RouteConstants.ExecutionsPage);
+        var navigation = page.GetByRole(AriaRole.Navigation, new() { Name = "Primary navigation" });
+        await Assertions.Expect(navigation.GetByRole(AriaRole.Link, new() { Name = "Endpoint runs" })).ToHaveCountAsync(0);
+        await navigation.GetByRole(AriaRole.Link, new() { Name = "Schedules", Exact = true }).ClickAsync();
+        page.Url.Should().Be(address + RouteConstants.SchedulesPage);
         await Assertions.Expect(page.Locator("#live-status")).ToHaveTextAsync("Live feed connected");
         var response = await context.APIRequest.PostAsync(address + "/api/executions");
         response.Status.Should().Be((int)HttpStatusCode.OK);
-        var execution = System.Text.Json.JsonSerializer.Deserialize<ExecutionRecord>(await response.TextAsync(),
+        var endpointExecution = System.Text.Json.JsonSerializer.Deserialize<ExecutionRecord>(await response.TextAsync(),
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        await Assertions.Expect(page.Locator("[data-execution-feed='Schedule']")).Not.ToContainTextAsync(endpointExecution.Id);
+        var execution = endpointExecution with { Id = "scheduled-live", Trigger = ExecutionContract.Schedule };
+        var notifier = factory.Services.GetRequiredService<IExecutionNotifier>();
+        await factory.Store.SaveAsync(execution, CancellationToken.None);
+        await notifier.PublishAsync(execution, CancellationToken.None);
         var row = page.Locator($"tr[data-execution-id='{execution.Id}']");
         await Assertions.Expect(row).ToContainTextAsync(ExecutionContract.Completed);
         await Assertions.Expect(row).ToContainTextAsync("No model or webhook");
-        var notifier = factory.Services.GetRequiredService<IExecutionNotifier>();
         foreach (var (id, minutes) in new[] { ("older-a", -1), ("older-b", -2) })
         {
             var older = execution with { Id = id, StartedAt = execution.StartedAt.AddMinutes(minutes) };
@@ -113,8 +118,7 @@ public sealed class BrowserTests
         await Assertions.Expect(page.Locator(".account > span")).ToBeVisibleAsync();
         var overflow = await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > window.innerWidth");
         overflow.Should().BeFalse("horizontal scrolling must be contained inside the history table, not the page");
-        await page.GotoAsync(address + RouteConstants.SchedulesPage);
-        await Assertions.Expect(page.Locator("[data-execution-feed='Schedule']")).Not.ToContainTextAsync(execution.Id);
+        await Assertions.Expect(page.Locator("[data-execution-feed='Schedule']")).Not.ToContainTextAsync(endpointExecution.Id);
         await page.GotoAsync(address + RouteConstants.LogsPage);
         await Assertions.Expect(page.Locator(".log-message")).ToContainTextAsync("<script>alert('test')</script>");
         if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_SCREENSHOT") is { Length: > 0 } screenshot)
@@ -177,12 +181,14 @@ public sealed class BrowserTests
             Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
         await using var factory = new AppFactory(new Dictionary<string, string?>
         {
-            ["Executions:HistoryLimit"] = "5", ["Insights:LogLimit"] = "3", ["Analytics:PageSize"] = "2"
+            ["Executions:HistoryLimit"] = "5",
+            ["Insights:LogLimit"] = "3",
+            ["Analytics:PageSize"] = "2"
         });
         var start = DateTimeOffset.UtcNow;
         for (var index = 0; index < 6; index++)
         {
-            await factory.Store.SaveAsync(new($"paged-{index}", ExecutionContract.Endpoint, ExecutionContract.NotImplemented,
+            await factory.Store.SaveAsync(new($"paged-{index}", ExecutionContract.Schedule, ExecutionContract.NotImplemented,
                 start.AddMinutes(-index), start.AddMinutes(-index), "test", $"correlation-{index}", $"Outcome {index}"), CancellationToken.None);
         }
         factory.Insights.Logs = Enumerable.Range(0, 4).Select(index =>
@@ -193,7 +199,8 @@ public sealed class BrowserTests
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
-            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"), Headless = true
+            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"),
+            Headless = true
         });
         await using var context = await browser.NewContextAsync(new BrowserNewContextOptions
         {
@@ -202,7 +209,7 @@ public sealed class BrowserTests
         var page = await context.NewPageAsync();
         var errors = new List<string>();
         page.PageError += (_, error) => errors.Add(error);
-        await page.GotoAsync(address + RouteConstants.ExecutionsPage);
+        await page.GotoAsync(address + RouteConstants.SchedulesPage);
         await Assertions.Expect(page.Locator("#live-status")).ToHaveTextAsync("Live feed connected");
         await Assertions.Expect(page.Locator("#execution-rows tr")).ToHaveCountAsync(2);
         await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Previous" })).ToBeDisabledAsync();
@@ -210,7 +217,7 @@ public sealed class BrowserTests
         await Assertions.Expect(page.Locator("#execution-rows tr").First).ToHaveAttributeAsync("data-execution-id", "paged-2");
         await Assertions.Expect(page.Locator(".page-controls")).ToContainTextAsync("Page 2 of 3");
 
-        var live = new ExecutionRecord("newest", ExecutionContract.Endpoint, ExecutionContract.NotImplemented,
+        var live = new ExecutionRecord("newest", ExecutionContract.Schedule, ExecutionContract.NotImplemented,
             start.AddMinutes(1), start.AddMinutes(1), "test", "live-correlation", "<img src=x onerror=alert(1)>");
         await factory.Store.SaveAsync(live, CancellationToken.None);
         await factory.Services.GetRequiredService<IExecutionNotifier>().PublishAsync(live, CancellationToken.None);
@@ -263,7 +270,7 @@ public sealed class BrowserTests
         await Assertions.Expect(page.Locator("[data-logs][data-v-app] [role=alert]")).ToContainTextAsync("Insights:ResourceId");
         errors.Should().BeEmpty("Vue must mount and update without browser runtime errors");
 
-        foreach (var route in new[] { RouteConstants.IndexPage, RouteConstants.SchedulesPage, RouteConstants.ExecutionsPage, RouteConstants.LogsPage, RouteConstants.ErrorPage })
+        foreach (var route in new[] { RouteConstants.IndexPage, RouteConstants.SchedulesPage, RouteConstants.LogsPage, RouteConstants.ErrorPage })
         {
             await page.SetViewportSizeAsync(390, 844);
             await page.GotoAsync(address + route);

@@ -19,7 +19,6 @@ public static class WebInfrastructureRegistration
             options.Conventions.AddPageRoute(RouteConstants.IndexPage, RouteConstants.LegacyIndexPage);
             options.Conventions.AddPageRoute(RouteConstants.ErrorPage, RouteConstants.LegacyErrorPage);
             options.Conventions.AddPageRoute(RouteConstants.SchedulesPage, RouteConstants.LegacySchedulesPage);
-            options.Conventions.AddPageRoute(RouteConstants.ExecutionsPage, RouteConstants.LegacyExecutionsPage);
             options.Conventions.AddPageRoute(RouteConstants.LogsPage, RouteConstants.LegacyLogsPage);
         }).AddMicrosoftIdentityUI();
         services.AddSignalR();

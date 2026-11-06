@@ -17,12 +17,10 @@ public sealed class WebTests
     [TestMethod]
     [DataRow("/")]
     [DataRow("/Schedules")]
-    [DataRow("/Executions")]
     [DataRow("/Logs")]
     [DataRow("/Info/Index")]
     [DataRow("/Info/Error")]
     [DataRow("/Analytics/Schedules")]
-    [DataRow("/Analytics/Executions")]
     [DataRow("/Analytics/Logs")]
     [DataRow("/ui/executions?trigger=Endpoint")]
     [DataRow("/hubs/executions/negotiate?negotiateVersion=1")]
@@ -71,7 +69,7 @@ public sealed class WebTests
     }
 
     [TestMethod]
-    public async Task ReaderPagesRenderActualMetricsVueLogsShellAndSeparateHistories()
+    public async Task ReaderPagesRenderActualMetricsVueLogsShellAndScheduledHistoryOnly()
     {
         await using var factory = new AppFactory();
         using var client = factory.Client("AgentOps.Reader");
@@ -84,8 +82,7 @@ public sealed class WebTests
         var logs = await client.GetStringAsync("/Logs");
         logs.Should().Contain("data-logs").And.Contain("Enable JavaScript")
             .And.NotContain("<table").And.NotContain("<script>alert");
-        var endpoints = await client.GetStringAsync("/Executions");
-        endpoints.Should().Contain("Endpoint only").And.NotContain("Schedule only");
+        overview.Should().NotContain("href=\"/Analytics/Executions\"").And.NotContain("Watch endpoint runs");
         var schedules = await client.GetStringAsync("/Schedules");
         schedules.Should().Contain("Schedule only").And.NotContain("Endpoint only");
         schedules.Should().Contain("0 0 1 1 *");

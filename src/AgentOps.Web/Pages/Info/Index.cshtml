@@ -25,7 +25,7 @@ else if (!Model.Configured)
     <div class="pipeline">
         <div><span class="step-number">01 / OBSERVE</span><h3>Application Insights</h3><p>Read the telemetry you provide. Keep operational logs separate from execution history.</p><a href="@Url.Content($"~{RouteConstants.LogsPage}")">Inspect application logs &#8599;</a></div>
         <div><span class="step-number">02 / TRIGGER</span><h3>On time. Or on demand.</h3><p>A process-local Hangfire schedule and an Entra-protected endpoint share one execution handler. Cosmos retains the history.</p><a href="@Url.Content($"~{RouteConstants.SchedulesPage}")">View schedules &#8599;</a></div>
-        <div><span class="step-number">03 / RESPOND</span><h3>Your agent, next.</h3><p>The Foundry factory is ready for implementation. Prompts, tools and actions are intentionally not defined.</p><a href="@Url.Content($"~{RouteConstants.ExecutionsPage}")">Watch endpoint runs &#8599;</a></div>
+        <div><span class="step-number">03 / RESPOND</span><h3>Your agent, next.</h3><p>The Foundry factory is ready for implementation. Prompts, tools and actions are intentionally not defined.</p><a href="@Url.Content($"~{RouteConstants.SchedulesPage}")">Follow scheduled runs &#8599;</a></div>
     </div>
 </section>
 <div class="bottom-note"><span class="crosshair" aria-hidden="true">+</span><p><strong>Honest by design.</strong> Until agent behavior is implemented, every run is recorded as <code>NotImplemented</code>. No model is called and no action is taken.</p></div>

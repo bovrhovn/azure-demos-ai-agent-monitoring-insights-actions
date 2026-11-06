@@ -1,5 +1,6 @@
 using AgentOps.Web;
 using FluentAssertions;
+using System.Net;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +10,23 @@ namespace AgentOps.Tests;
 [TestClass]
 public sealed class RouteTests
 {
+    [TestMethod]
+    [DataRow("/Executions")]
+    [DataRow("/Analytics/Executions")]
+    public async Task RemovedEndpointRunsPageHasNoRouteOrNavigation(string route)
+    {
+        await using var factory = new AppFactory();
+        using var client = factory.Client("AgentOps.Reader");
+        (await client.GetAsync(route)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var html = await client.GetStringAsync(RouteConstants.SchedulesPage);
+        html.Should().NotContain("Endpoint runs")
+            .And.NotContain("href=\"/Executions\"")
+            .And.NotContain("href=\"/Analytics/Executions\"")
+            .And.Contain("data-execution-feed=\"Schedule\"");
+        var endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>();
+        endpoints.Should().NotContain(endpoint => endpoint.RoutePattern.RawText!.TrimStart('/') == route.TrimStart('/'));
+    }
+
     [TestMethod]
     [DataRow(RouteConstants.Health)]
     [DataRow(RouteConstants.Liveness)]
@@ -28,7 +46,7 @@ public sealed class RouteTests
     {
         await using var factory = new AppFactory();
         using var client = factory.Client("AgentOps.Reader");
-        var html = await client.GetStringAsync(RouteConstants.ExecutionsPage);
+        var html = await client.GetStringAsync(RouteConstants.SchedulesPage);
         html.Should().Contain($"data-execution-hub=\"{RouteConstants.ExecutionHub}\"")
             .And.Contain($"data-execution-history=\"{RouteConstants.ExecutionHistory}\"")
             .And.Contain($"data-analytics-executions=\"{RouteConstants.AnalyticsExecutions}\"")
@@ -36,7 +54,6 @@ public sealed class RouteTests
             .And.Contain($"data-analytics-logs=\"{RouteConstants.AnalyticsLogs}\"")
             .And.Contain($"data-analytics-schedule=\"{RouteConstants.AnalyticsSchedule}\"")
             .And.Contain($"href=\"{RouteConstants.SchedulesPage}\"")
-            .And.Contain($"href=\"{RouteConstants.ExecutionsPage}\"")
             .And.Contain($"href=\"{RouteConstants.LogsPage}\"");
         var endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>();
         endpoints.Should().Contain(x => x.RoutePattern.RawText == RouteConstants.ExecutionHub);
@@ -51,8 +68,6 @@ public sealed class RouteTests
     [DataRow("/Info/Error", "/Pages/Info/Error.cshtml", "Something went wrong.")]
     [DataRow("/Schedules", "/Pages/Analytics/Schedules.cshtml", "Schedules")]
     [DataRow("/Analytics/Schedules", "/Pages/Analytics/Schedules.cshtml", "Schedules")]
-    [DataRow("/Executions", "/Pages/Analytics/Executions.cshtml", "Endpoint runs")]
-    [DataRow("/Analytics/Executions", "/Pages/Analytics/Executions.cshtml", "Endpoint runs")]
     [DataRow("/Logs", "/Pages/Analytics/Logs.cshtml", "Application logs")]
     [DataRow("/Analytics/Logs", "/Pages/Analytics/Logs.cshtml", "Application logs")]
     public async Task NewAndLegacyRoutesResolveToRelocatedRazorPages(string route, string file, string heading)
