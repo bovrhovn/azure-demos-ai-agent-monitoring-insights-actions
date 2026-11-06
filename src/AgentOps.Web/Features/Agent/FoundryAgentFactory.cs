@@ -12,7 +12,7 @@ namespace AgentOps.Web.Features.Agent;
 public sealed class FoundryAgentFactory(TokenCredential credential, IOptions<FoundryOptions> options,
     ILogger<FoundryAgentFactory> logger, IOptions<InsightsToolOptions> toolOptions) : IFoundryAgentFactory
 {
-    public AIAgent Create(string instructions, IList<AITool>? tools = null)
+    public AIAgent Create(string instructions, IList<AITool>? tools = null, AgentPurpose purpose = AgentPurpose.Chat)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instructions);
         var settings = options.Value;
@@ -22,14 +22,16 @@ public sealed class FoundryAgentFactory(TokenCredential credential, IOptions<Fou
             logger.LogWarning("Foundry agent creation rejected because the project endpoint or model deployment is not configured");
             throw new FoundryConfigurationException();
         }
-        logger.LogInformation("Creating Foundry agent {AgentName} for deployment {ModelDeployment}", settings.AgentName, settings.ModelDeployment);
-        return new AIProjectClient(uri, credential).AsAIAgent(
-            model: settings.ModelDeployment, name: settings.AgentName, instructions: instructions, tools: tools,
-            clientFactory: client => client.AsBuilder().UseFunctionInvocation(configure: invocation =>
+        var name = purpose == AgentPurpose.Investigation ? settings.InvestigationAgentName : settings.AgentName;
+        logger.LogInformation("Creating Foundry agent {AgentName} for deployment {ModelDeployment}", name, settings.ModelDeployment);
+        return AgentTelemetry.InstrumentAgent(new AIProjectClient(uri, credential).AsAIAgent(
+            options: new ChatClientAgentOptions
             {
-                invocation.AllowConcurrentInvocation = false;
-                invocation.IncludeDetailedErrors = false;
-                invocation.MaximumIterationsPerRequest = toolOptions.Value.MaxToolCalls;
-            }).Build());
+                Id = name,
+                Name = name,
+                ChatOptions = new() { ModelId = settings.ModelDeployment, Instructions = instructions, Tools = tools },
+                UseProvidedChatClientAsIs = true
+            },
+            clientFactory: client => AgentTelemetry.InstrumentChatClient(client, toolOptions.Value.MaxToolCalls)));
     }
 }

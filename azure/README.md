@@ -185,6 +185,17 @@ The deployment script registers the subscription only after readiness and requir
 When rotating the webhook key, redeploy both the Container Apps secret reference and
 Event Grid registration with the same value.
 
+For live delivery verification, the publishing identity needs **EventGrid Data Sender**
+on the topic; management-plane **Owner** alone does not grant the send data action.
+Keep `disableLocalAuth=true` and publish through Microsoft Entra authentication.
+Compare the subscription's secret delivery attribute with the running webhook entirely
+in process, never print keys, and account for version-pinned Key Vault references.
+An authenticated subscription-validation response verifies the key but is not evidence
+of real topic delivery: publish a unique event and verify its durable notification ID.
+Unauthenticated or intentional invalid-key probes correctly produce the
+`Event Grid webhook rejected an invalid API key.` warning; correlate their operation IDs
+before assuming the configured Event Grid subscription is at fault.
+
 Scheduling uses Hangfire.InMemory; no PostgreSQL server or relational scheduling environment
 variables are required. Incremental deployment does not delete an old server: inventory it
 and explicitly approve deletion only after the replacement app is healthy.

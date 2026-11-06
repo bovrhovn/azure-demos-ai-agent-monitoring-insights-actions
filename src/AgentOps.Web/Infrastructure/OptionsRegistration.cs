@@ -20,7 +20,9 @@ public static class OptionsRegistration
                 "InsightsTools defaults and field size must fit within the configured maximums.").ValidateOnStart();
         services.AddOptions<AnalyticsOptions>().BindConfiguration(AnalyticsOptions.Section).ValidateDataAnnotations()
             .Validate(o => o.PageSize <= o.MaxPageSize, "Analytics:PageSize cannot exceed MaxPageSize.").ValidateOnStart();
-        services.AddOptions<FoundryOptions>().BindConfiguration(FoundryOptions.Section);
+        services.AddOptions<FoundryOptions>().BindConfiguration(FoundryOptions.Section).ValidateDataAnnotations()
+            .Validate(o => o.AgentName != o.InvestigationAgentName,
+                "Foundry chat and investigation agent names must be distinct.").ValidateOnStart();
         services.AddOptions<ChatOptions>().BindConfiguration(ChatOptions.Section).ValidateDataAnnotations()
             .Validate<Microsoft.Extensions.Options.IOptions<CosmosOptions>>((chat, cosmos) => chat.Container != cosmos.Value.Container,
                 "Chat:Container must be different from Cosmos:Container.").ValidateOnStart();

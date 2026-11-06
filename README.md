@@ -17,7 +17,7 @@ An ASP.NET Core **.NET 10 / C# Razor Pages** application for observing Applicati
 | Agent integration | Microsoft Agent Framework + `AIProjectClient` behind `IFoundryAgentFactory`; read-only investigation and human-review proposals |
 | Persistence | Cosmos DB emulator connection string in Development; Cosmos HTTPS endpoint + `DefaultAzureCredential` outside Development |
 | Background jobs | Official Hangfire ASP.NET Core server with Hangfire.InMemory process-local storage |
-| Telemetry | Structured `ILogger` events exported to Application Insights using its connection string |
+| Telemetry | Classic web/log telemetry plus privacy-safe OpenTelemetry agent, model, tool and token telemetry for Application Insights Agents (Preview) |
 | Deployment | Non-root, multi-stage Linux container; Bicep for Azure Container Apps and supporting resources |
 | Verification | MSTest unit/integration tests, real SignalR, opt-in Cosmos emulator and browser checks, WSL runner |
 

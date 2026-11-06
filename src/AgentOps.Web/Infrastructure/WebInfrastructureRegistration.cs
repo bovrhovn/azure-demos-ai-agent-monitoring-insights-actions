@@ -72,6 +72,7 @@ public static class WebInfrastructureRegistration
         });
         services.AddApplicationInsightsTelemetry(options =>
             options.ConnectionString = configuration["ApplicationInsights:ConnectionString"]);
+        services.AddAgentTelemetry(configuration);
         services.AddLogging(logging => logging.AddFilter<Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider>(
             "AgentOps", LogLevel.Information));
         services.AddHealthChecks().AddCheck<DependencyReadiness>("persistence");

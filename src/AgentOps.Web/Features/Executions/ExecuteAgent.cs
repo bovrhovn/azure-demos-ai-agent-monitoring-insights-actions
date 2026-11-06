@@ -23,9 +23,12 @@ public sealed class ExecuteAgent(
         ArgumentException.ThrowIfNullOrWhiteSpace(requestedBy);
         var previous = executionId is null ? null : await store.GetAsync(executionId, trigger, cancellationToken);
         if (previous?.Status == ExecutionContract.Completed) return previous;
+        using var activity = AgentTelemetry.StartExecution(previous?.CorrelationId);
+        activity.SetTag("agentops.execution.trigger", trigger);
         var execution = new ExecutionRecord(executionId ?? Guid.NewGuid().ToString("N"), trigger, ExecutionContract.Running,
             previous?.StartedAt ?? clock.GetUtcNow(), null, requestedBy,
             previous?.CorrelationId ?? Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N"), null);
+        activity.SetTag("agentops.execution.id", execution.Id);
         using var scope = logger.BeginScope(new Dictionary<string, object>
         {
             ["ExecutionId"] = execution.Id,
@@ -44,6 +47,7 @@ public sealed class ExecuteAgent(
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
+            activity.SetStatus(ActivityStatusCode.Error, "canceled");
             execution = execution with { Status = ExecutionContract.Canceled, Summary = "Execution was canceled or timed out.", CompletedAt = clock.GetUtcNow() };
             await CompleteAsync(execution);
             logger.LogWarning("Agent execution canceled");
@@ -51,8 +55,10 @@ public sealed class ExecuteAgent(
         }
         catch (Exception exception)
         {
+            activity.SetStatus(ActivityStatusCode.Error, "failed");
             execution = execution with { Status = ExecutionContract.Failed, Summary = "Agent execution failed. See correlated application logs.", CompletedAt = clock.GetUtcNow() };
             await CompleteAsync(execution);
+            activity.SetTag("agentops.execution.status", execution.Status);
             logger.LogError(exception, "Agent execution failed");
             throw;
         }

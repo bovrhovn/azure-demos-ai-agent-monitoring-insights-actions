@@ -112,7 +112,7 @@ public sealed class ErrorInvestigationTests
         var execution = await harness.RunAsync();
         execution.Status.Should().Be(ExecutionContract.Completed);
         execution.Summary.Should().Contain("No relevant").And.Contain("No model or webhook");
-        harness.Factory.Verify(factory => factory.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>()), Times.Never);
+        harness.Factory.Verify(factory => factory.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>(), It.IsAny<AgentPurpose>()), Times.Never);
         harness.Queries.Select(query => query.Kind).Should().Equal(TelemetryQueryKind.Exceptions, TelemetryQueryKind.Traces);
         harness.App.Notifications.Items.Should().BeEmpty();
     }
@@ -288,8 +288,8 @@ public sealed class ErrorInvestigationTests
                     return Task.FromResult(new ChatResponse(new ModelMessage(ChatRole.Assistant, text))
                         { FinishReason = LongOutput ? ChatFinishReason.Length : ChatFinishReason.Stop });
                 });
-            Factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>()))
-                .Callback<string, IList<AITool>?>((instructions, tools) =>
+            Factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>(), AgentPurpose.Investigation))
+                .Callback<string, IList<AITool>?, AgentPurpose>((instructions, tools, _) =>
                 {
                     Instructions = instructions;
                     tools.Should().BeNullOrEmpty("the investigation model cannot invoke tools or choose delivery parameters");

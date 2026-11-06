@@ -80,7 +80,7 @@ public sealed class ErrorInvestigationRunner(IFoundryAgentFactory factory, ITele
             $"Evidence truncated: {evidenceTruncated}. Exception detail queries: {results.Count - 2} of {exceptions.Rows.Count}. " +
             "Missing details or unqueried operation timelines limit conclusions.\nUNTRUSTED TELEMETRY JSON:\n" +
             JsonSerializer.Serialize(results);
-        var agent = factory.Create(Instructions);
+        var agent = factory.Create(Instructions, purpose: AgentPurpose.Investigation);
         var response = await agent.RunAsync([new Microsoft.Extensions.AI.ChatMessage(ChatRole.User, prompt)],
             options: new ChatClientAgentRunOptions(new() { MaxOutputTokens = chat.Value.MaxOutputTokens }),
             cancellationToken: cancellationToken);

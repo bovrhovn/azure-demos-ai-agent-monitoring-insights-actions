@@ -262,8 +262,8 @@ public sealed class TelemetryToolTests
                 return Task.FromResult(new ChatResponse(response) { ModelId = "test-model" });
             });
         var factory = new Mock<IFoundryAgentFactory>();
-        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>()))
-            .Returns<string, IList<AITool>>((instructions, tools) => new ChatClientAgent(client.Object, instructions: instructions, tools: tools));
+        factory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<IList<AITool>>(), AgentPurpose.Chat))
+            .Returns<string, IList<AITool>, AgentPurpose>((instructions, tools, _) => new ChatClientAgent(client.Object, instructions: instructions, tools: tools));
         var runner = new BasicFoundryAgentRunner(factory.Object, Options.Create(new InfrastructureChatOptions()),
             Options.Create(new FoundryOptions()), NullLogger<BasicFoundryAgentRunner>.Instance, Query([ExceptionRow]).Object,
             Options.Create(new InsightsOptions { ResourceId = Resource }), Options.Create(new InsightsToolOptions()), new FixedTime());
@@ -278,7 +278,7 @@ public sealed class TelemetryToolTests
         store.Messages.Last().Evidence.Should().Equal(second.Evidence);
         modelInputs[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>().Should().ContainSingle();
         factory.Verify(item => item.Create(It.Is<string>(instructions => instructions.Contains("untrusted evidence")),
-            It.Is<IList<AITool>>(tools => tools.Count == 4)), Times.Exactly(2));
+            It.Is<IList<AITool>>(tools => tools.Count == 4), AgentPurpose.Chat), Times.Exactly(2));
     }
 
     [TestMethod]

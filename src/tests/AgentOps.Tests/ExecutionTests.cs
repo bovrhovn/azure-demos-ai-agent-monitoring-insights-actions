@@ -1,4 +1,5 @@
 using AgentOps.Web.Features.Agent;
+using System.Diagnostics;
 using AgentOps.Web.Features.Executions;
 using AgentOps.Web.Features.Scheduling;
 using AgentOps.Web.Infrastructure;
@@ -141,6 +142,52 @@ public sealed class ExecutionTests
         (await Handler().RunAsync(ExecutionContract.Schedule, "hangfire", CancellationToken.None, old.Id)).Should().Be(result);
         runner.Verify(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()), Times.Once);
         store.Writes.Should().HaveCount(3);
+    }
+
+    [TestMethod]
+    [DataRow(ExecutionContract.Endpoint, true)]
+    [DataRow(ExecutionContract.Schedule, false)]
+    public async Task ExecutionAndAgentDescendantsShareTheDurableCorrelation(string trigger, bool httpParent)
+    {
+        using var parent = httpParent ? new Activity("http").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
+        ActivityTraceId descendantTrace = default;
+        string? executionParent = null;
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()))
+            .Returns<ExecutionRecord, CancellationToken>((record, _) =>
+            {
+                Activity.Current.Should().NotBeNull();
+                executionParent = Activity.Current!.ParentId;
+                using var descendant = new Activity("agent").Start();
+                descendantTrace = descendant.TraceId;
+                record.CorrelationId.Should().Be(descendantTrace.ToString());
+                return Task.FromResult(new AgentOutcome(ExecutionContract.Completed, "Done"));
+            });
+        var result = await Handler().RunAsync(trigger, "test", CancellationToken.None);
+        result.CorrelationId.Should().Be(descendantTrace.ToString());
+        if (httpParent)
+        {
+            descendantTrace.Should().Be(parent!.TraceId);
+            executionParent.Should().Be(parent.Id);
+        }
+        Activity.Current.Should().Be(parent);
+    }
+
+    [TestMethod]
+    public async Task RequeuedRunContinuesTheOriginalTraceRatherThanTheDispatchTrace()
+    {
+        const string originalTrace = "1234567890abcdef1234567890abcdef";
+        await store.SaveAsync(new("retry", ExecutionContract.Schedule, ExecutionContract.Canceled,
+            now, now, "hangfire", originalTrace, null), CancellationToken.None);
+        using var dispatch = new Activity("dispatch").SetIdFormat(ActivityIdFormat.W3C).Start();
+        runner.Setup(x => x.RunAsync(It.IsAny<ExecutionRecord>(), It.IsAny<CancellationToken>()))
+            .Returns<ExecutionRecord, CancellationToken>((_, _) =>
+            {
+                Activity.Current!.TraceId.ToString().Should().Be(originalTrace);
+                return Task.FromResult(new AgentOutcome(ExecutionContract.Completed, "Done"));
+            });
+        var result = await Handler().RunAsync(ExecutionContract.Schedule, "hangfire", CancellationToken.None, "retry");
+        result.CorrelationId.Should().Be(originalTrace);
+        Activity.Current.Should().Be(dispatch);
     }
 
     [TestMethod]

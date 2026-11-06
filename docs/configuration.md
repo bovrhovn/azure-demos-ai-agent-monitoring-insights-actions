@@ -1,5 +1,24 @@
 # Configuration reference
 
+## Agent observability
+
+`ApplicationInsights:ConnectionString` also enables a separate OpenTelemetry trace/metric
+export pipeline for `AgentOps.GenAI` and execution correlation spans. Classic Application
+Insights still owns web requests, dependencies, logs and `TelemetryClient`; the GenAI
+pipeline does not auto-instrument HTTP or export logs a second time.
+Real Microsoft Agent Framework runs emit agent, model, tool and token metadata for
+Application Insights **Agents (Preview)**. Chat uses `Foundry:AgentName` (default
+`insights-agent`); scheduled/API investigations use `Foundry:InvestigationAgentName`
+(default `insights-investigation`). Empty evidence still skips the model.
+Each configured name is also the stable framework agent ID, avoiding a new monitoring
+identity on every request. The two names must be nonempty and distinct.
+Message, instruction, tool argument and tool result capture is explicitly disabled,
+including when `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` is set externally.
+The durable execution correlation ID is the trace ID shared by agent descendants;
+requeued work continues its original valid W3C trace ID.
+See [Agent Framework observability](https://learn.microsoft.com/agent-framework/agents/observability)
+and [Application Insights Agents](https://learn.microsoft.com/azure/azure-monitor/app/agents-view). reference
+
 Application settings use one validated class per file in `Infrastructure/Options` and scheduling settings in `Features/Scheduling/SchedulingRegistration.cs`. `OptionsRegistration` binds and validates application options; `ApplicationServiceRegistration` registers application adapters and background services; `WebInfrastructureRegistration` registers Razor Pages, identity, SignalR, Problem Details, ingress handling, telemetry and health checks. `AddAgentOps` composes these registrations. ASP.NET Core configuration sources apply in their normal order: checked-in JSON defaults, Development JSON, Development user-secrets, environment variables, then command-line arguments. Use double underscores for nested environment variables.
 
 No credentials belong in committed JSON, Dockerfiles, documentation examples with real values, or Squad state.
