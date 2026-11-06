@@ -227,4 +227,4 @@ Anonymous probes: `/health` and `/health/ready` check all three Cosmos container
 
 ## ⚖️ License
 
-Licensed under the [MIT License](LICENSE). Copyright © 2026 Bojan Vrhovnik.
+Licensed under the [MIT License](LICENSE). 
