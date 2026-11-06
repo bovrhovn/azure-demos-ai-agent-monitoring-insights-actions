@@ -74,6 +74,8 @@ Event ID is `investigation-{executionId}`. Hangfire injects `PerformContext`; be
 
 Proposal text fits `Chat:MaxPromptLength` and discloses model/output clipping. Opening the notification reserves an owner-scoped chat and prefills its draft without sending anything; handling/comment updates remain explicit operator actions. Real fixes require a separate approved execution design.
 
+The Vue webhook inbox shows at most 250 Unicode code points from each message and raw event. Truncated records offer **Show more**, opening one reusable native dialog with complete text and existing metadata. Previews are calculated once per loaded page; full details are rendered only while selected. This bounds row rendering, not the notification API response size. Dialog dismissal restores focus, and all payloads remain text-rendered.
+
 ## Intentional limitations and deployment
 
 `azure/scripts/Deploy-All.ps1` separates resource provisioning from image build and activation. Bicep creates or reuses ACR, configures identity/telemetry/Cosmos/Foundry, and initially omits the app. ACR Tasks builds and pushes the image; the script verifies its digest, then redeploys Bicep with the app enabled and that immutable digest. Existing ACRs can be in another resource group/subscription and receive a managed-identity pull grant without changing their settings.

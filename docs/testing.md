@@ -88,6 +88,8 @@ dotnet test AgentOps.slnx --configuration Release --filter TestCategory=Browser
 
 An existing Edge installation can be selected with `AGENTOPS_BROWSER_CHANNEL=msedge`. The tests run real Razor/Kestrel/SignalR with test-only external adapters, check metrics, live execution updates, history bounds, reconnect recovery from authoritative history, a 390-pixel viewport, scheduled-history separation and safe text rendering. A real Hangfire recurring job is explicitly dispatched and held at the runner boundary so the browser must observe both Running and terminal states. These are not real tenant sign-in or Cosmos integration tests. `AGENTOPS_BROWSER_SCREENSHOT` optionally names an output screenshot.
 
+`NotificationBrowserTests` also exercises 250-character Unicode boundaries, truncated message/raw-event previews, complete escaped dialog content, record switching, native keyboard focus containment, Escape/Close focus restoration and desktop/mobile long-JSON layout. `AGENTOPS_NOTIFICATION_DETAILS_SCREENSHOT` optionally sets a screenshot path prefix (desktop/mobile suffixes are added). Frontend tests independently cover preview boundaries and surrogate-pair safety.
+
 ## WSL
 
 ```powershell

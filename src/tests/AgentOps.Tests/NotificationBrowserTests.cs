@@ -119,7 +119,6 @@ public sealed class NotificationBrowserTests
         await Assertions.Expect(rows.First).ToHaveAttributeAsync("data-notification-id", "newest");
         await Assertions.Expect(page.GetByLabel("Status", new() { Exact = true })).ToHaveValueAsync("all");
         await Assertions.Expect(rows.First).ToContainTextAsync(message);
-        await rows.First.Locator("summary").ClickAsync();
         await Assertions.Expect(rows.First.Locator("pre")).ToContainTextAsync("<script>raw event</script>");
         await Assertions.Expect(rows.Locator("img, script")).ToHaveCountAsync(0);
         if (Environment.GetEnvironmentVariable("AGENTOPS_NOTIFICATION_SCREENSHOT") is { Length: > 0 } screenshot)
@@ -193,6 +192,104 @@ public sealed class NotificationBrowserTests
         await Assertions.Expect(prompt).ToHaveValueAsync("");
         await Assertions.Expect(page.GetByRole(AriaRole.Article, new() { Name = "User prompt" })).ToContainTextAsync(message);
         errors.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    [TestCategory("Browser")]
+    public async Task InboxBoundsUnicodePreviewsAndShowsSafeCompleteDetailsInOneResponsiveKeyboardDialog()
+    {
+        if (Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_TESTS") != "true")
+            Assert.Inconclusive("Set AGENTOPS_BROWSER_TESTS=true and install Playwright Chromium to run browser verification.");
+        await using var factory = new AppFactory();
+        var now = DateTimeOffset.UtcNow;
+        var boundary = string.Concat(Enumerable.Repeat("🚀", 250));
+        var longMessage = new string('a', 249) + "🚀<img src=x onerror=alert(1)> message tail";
+        var longRaw = "{\"data\":{\"message\":\"<script>alert(1)</script>\",\"detail\":\""
+            + new string('z', 12000) + "\"}}";
+        await factory.Notifications.CreateAsync(new("short", "{}", "Short signal", now), CancellationToken.None);
+        await factory.Notifications.CreateAsync(new("boundary", boundary, boundary, now.AddMinutes(-1)), CancellationToken.None);
+        await factory.Notifications.CreateAsync(new("long-message", "{}", longMessage, now.AddMinutes(-2)), CancellationToken.None);
+        await factory.Notifications.CreateAsync(new("long-raw", longRaw, "Another signal", now.AddMinutes(-3))
+        { IsHandled = true, Comment = "<b>Reviewed safely</b>" }, CancellationToken.None);
+        factory.UseKestrel();
+        using var client = factory.CreateClient();
+        var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new()
+        {
+            Channel = Environment.GetEnvironmentVariable("AGENTOPS_BROWSER_CHANNEL"), Headless = true
+        });
+        await using var context = await browser.NewContextAsync(new()
+        {
+            ExtraHTTPHeaders = new Dictionary<string, string> { ["X-Test-Role"] = "AgentOps.Reader" },
+            ViewportSize = new() { Width = 1440, Height = 1000 }
+        });
+        var page = await context.NewPageAsync();
+        var errors = new List<string>();
+        page.PageError += (_, error) => errors.Add(error);
+        await page.GotoAsync(address + RouteConstants.NotificationsPage);
+        var rows = page.Locator("tr[data-notification-id]");
+        await Assertions.Expect(rows).ToHaveCountAsync(4);
+        var shortRow = page.Locator("tr[data-notification-id='short']");
+        var boundaryRow = page.Locator("tr[data-notification-id='boundary']");
+        var messageRow = page.Locator("tr[data-notification-id='long-message']");
+        var rawRow = page.Locator("tr[data-notification-id='long-raw']");
+        await Assertions.Expect(shortRow.GetByRole(AriaRole.Button, new() { Name = "Show more" })).ToHaveCountAsync(0);
+        await Assertions.Expect(boundaryRow.GetByRole(AriaRole.Button, new() { Name = "Show more" })).ToHaveCountAsync(0);
+        await Assertions.Expect(boundaryRow.Locator(".notification-message-preview > span").First).ToHaveTextAsync(boundary);
+        await Assertions.Expect(boundaryRow.Locator(".notification-raw-preview > span").First).ToHaveTextAsync(boundary);
+        await Assertions.Expect(messageRow.Locator(".notification-message-preview > span").First).ToHaveTextAsync(new string('a', 249) + "🚀");
+        await Assertions.Expect(rawRow.Locator(".notification-raw-preview > span").First).ToHaveTextAsync(longRaw[..250]);
+        await Assertions.Expect(page.Locator(".notification-table")).Not.ToContainTextAsync("message tail");
+        (await rows.Locator(".notification-message-preview > span:first-child, .notification-raw-preview > span:first-child")
+            .EvaluateAllAsync<bool>("elements => elements.every(element => [...element.textContent].length <= 250)")).Should().BeTrue();
+        await Assertions.Expect(page.Locator(".notification-details-message, .notification-details-raw")).ToHaveCountAsync(0);
+
+        var messageMore = messageRow.GetByRole(AriaRole.Button, new() { Name = "Show more" });
+        await messageMore.ClickAsync();
+        var details = page.GetByRole(AriaRole.Dialog, new() { Name = "Notification details" });
+        await Assertions.Expect(details).ToBeVisibleAsync();
+        await Assertions.Expect(details.Locator(".notification-details-message")).ToHaveTextAsync(longMessage);
+        await Assertions.Expect(details.Locator(".notification-details-raw")).ToHaveTextAsync("{}");
+        await Assertions.Expect(details.Locator("img, script")).ToHaveCountAsync(0);
+        var close = details.GetByRole(AriaRole.Button, new() { Name = "Close" });
+        await Assertions.Expect(close).ToBeFocusedAsync();
+        await page.Keyboard.PressAsync("Tab");
+        (await details.EvaluateAsync<bool>("element => element.contains(document.activeElement) || document.activeElement === document.body")).Should().BeTrue();
+        await page.Keyboard.PressAsync("Tab");
+        await Assertions.Expect(close).ToBeFocusedAsync();
+        await page.Keyboard.PressAsync("Escape");
+        await Assertions.Expect(details).Not.ToBeVisibleAsync();
+        await Assertions.Expect(messageMore).ToBeFocusedAsync();
+        await Assertions.Expect(page.Locator(".notification-details-message, .notification-details-raw")).ToHaveCountAsync(0);
+
+        var rawMore = rawRow.GetByRole(AriaRole.Button, new() { Name = "Show more" });
+        await rawMore.ClickAsync();
+        await Assertions.Expect(page.Locator("dialog[open]")).ToHaveCountAsync(1);
+        await Assertions.Expect(details.Locator(".notification-details-message")).ToHaveTextAsync("Another signal");
+        await Assertions.Expect(details.Locator(".notification-details-raw")).ToHaveTextAsync(longRaw);
+        await Assertions.Expect(details.Locator(".notification-details-comment")).ToHaveTextAsync("<b>Reviewed safely</b>");
+        await Assertions.Expect(details.Locator("img, script, b")).ToHaveCountAsync(0);
+        await Assertions.Expect(details).Not.ToContainTextAsync("message tail");
+        foreach (var width in new[] { 1440, 390 })
+        {
+            await page.SetViewportSizeAsync(width, 844);
+            (await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > innerWidth")).Should().BeFalse();
+            (await details.EvaluateAsync<bool>("element => element.scrollWidth <= element.clientWidth")).Should().BeTrue();
+            var bounds = (await details.BoundingBoxAsync())!;
+            bounds.X.Should().BeGreaterThanOrEqualTo(0);
+            (bounds.X + bounds.Width).Should().BeLessThanOrEqualTo(width);
+            if (Environment.GetEnvironmentVariable("AGENTOPS_NOTIFICATION_DETAILS_SCREENSHOT") is { Length: > 0 } screenshot)
+                await page.ScreenshotAsync(new() { Path = $"{screenshot}-{width}.png" });
+        }
+        await close.ClickAsync();
+        await Assertions.Expect(rawMore).ToBeFocusedAsync();
+        await messageMore.ClickAsync();
+        await Assertions.Expect(details.Locator(".notification-details-message")).ToHaveTextAsync(longMessage);
+        await Assertions.Expect(details.Locator(".notification-details-raw")).ToHaveTextAsync("{}");
+        await close.ClickAsync();
+        errors.Should().BeEmpty();
+        factory.ChatAgent.Calls.Should().BeEmpty();
     }
 
     [TestMethod]

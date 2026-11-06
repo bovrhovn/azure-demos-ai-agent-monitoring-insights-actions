@@ -1,5 +1,7 @@
 <script setup>
 import { nextTick, onMounted, ref } from "vue";
+import { notificationPreview } from "../notificationPreview.mjs";
+import NotificationDetailsDialog from "./NotificationDetailsDialog.vue";
 
 const props = defineProps({
     endpoint: { type: String, required: true },
@@ -23,6 +25,7 @@ const busy = ref(false);
 const error = ref("");
 const status = ref("");
 const dialog = ref(null);
+const detailsDialog = ref(null);
 const commentInput = ref(null);
 const completing = ref(null);
 const comment = ref("");
@@ -64,7 +67,11 @@ async function readPage(index) {
     url.searchParams.set("sort", sort.value);
     if (tokens.value[index]) url.searchParams.set("continuationToken", tokens.value[index]);
     const result = await request(url);
-    items.value = result.items;
+    items.value = result.items.map(item => ({
+        ...item,
+        messagePreview: notificationPreview(item.message),
+        rawPreview: notificationPreview(item.rawData)
+    }));
     nextToken.value = result.continuationToken;
     page.value = index;
 }
@@ -223,13 +230,17 @@ onMounted(() => load(true));
                         <td><span class="notification-state" :class="{ complete: item.isHandled }">{{ item.isHandled ? "Handled" : "Needs attention" }}</span>
                             <time :datetime="item.receivedDate">{{ formatDate(item.receivedDate) }}</time></td>
                         <td class="notification-message">
-                            <p>{{ item.message || "No data.message was supplied." }}</p>
-                            <details><summary>Raw event</summary><pre>{{ item.rawData }}</pre></details>
+                            <p class="notification-message-preview"><span>{{ item.messagePreview.text || "No data.message was supplied." }}</span><span v-if="item.messagePreview.truncated" class="notification-ellipsis" aria-label="truncated">&hellip;</span></p>
+                            <span class="notification-raw-label">Raw event</span>
+                            <pre class="notification-raw-preview"><span>{{ item.rawPreview.text }}</span><span v-if="item.rawPreview.truncated" class="notification-ellipsis" aria-label="truncated">&hellip;</span></pre>
+                            <button v-if="item.messagePreview.truncated || item.rawPreview.truncated" type="button"
+                                    class="notification-show-more" aria-haspopup="dialog"
+                                    @click="detailsDialog.open(item, $event.currentTarget)">Show more <span aria-hidden="true">&#8599;</span></button>
                         </td>
                         <td class="notification-handling">
                             <label class="notification-checkbox">
                                 <input type="checkbox" :checked="item.isHandled" :disabled="busy || !canOperate"
-                                       :aria-label="`Handled: ${item.message || item.id}`" @change="toggle(item, $event)" />
+                                       :aria-label="`Handled: ${item.messagePreview.text || item.id}`" @change="toggle(item, $event)" />
                                 <span>{{ item.isHandled ? "Complete" : "Mark complete" }}</span>
                             </label>
                             <p v-if="item.comment" class="notification-comment">{{ item.comment }}</p>
@@ -252,6 +263,7 @@ onMounted(() => load(true));
                 <button type="button" :disabled="busy || !nextToken" @click="nextPage()">Next</button></div>
         </div>
     </section>
+    <NotificationDetailsDialog ref="detailsDialog" />
     <dialog ref="dialog" class="notification-dialog" aria-labelledby="notification-dialog-title"
             @cancel.prevent="!busy && closeDialog()">
         <form @submit.prevent="updateHandled(completing, true)">
