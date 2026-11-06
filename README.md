@@ -1,15 +1,19 @@
 # Agent Observatory
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Turn Application Insights errors into evidence-backed investigation proposals—with a human in control.**
 
 Agent Observatory is a developer-focused Azure demo built with **.NET 10, Razor Pages, Vue 3 and Microsoft Agent Framework**. Inspect telemetry, run investigations on demand or on a UTC schedule, and follow durable execution history alongside private Microsoft Foundry conversations.
 
-[Capabilities](#capabilities) · [Workflow](#investigation-workflow) · [Execution API](#execution-api-and-scheduled-investigations) · [Local setup](#run-locally) · [Tests](#run-tests) · [Deployment](#deploy-to-azure) · [Guides](#documentation)
+[Overview](#overview) · [Architecture](#architecture) · [Local development](#local-development) · [Testing](#testing) · [Deployment & operations](#deployment-operations) · [Documentation](#documentation) · [License](#license)
 
 > [!IMPORTANT]
 > Investigations are implemented, not just request logging: matching evidence can trigger a real, billable Foundry model call. **No remediation is executed automatically.** Results are proposals for human review; opening one only prefills a chat draft.
 
-## Capabilities
+<a id="overview"></a>
+
+## 🔭 Overview & capabilities
 
 | Surface | What you can do |
 |---|---|
@@ -24,7 +28,11 @@ Agent Observatory is a developer-focused Azure demo built with **.NET 10, Razor 
 
 The browser uses Vue components and the official SignalR client, bundled with Vite. Razor supplies application-local endpoint URLs; there is no separate frontend server.
 
-## Investigation workflow
+<a id="architecture"></a>
+
+## 🏗️ Architecture & execution flow
+
+### Investigation workflow
 
 ```mermaid
 flowchart TD
@@ -44,7 +52,7 @@ flowchart TD
 
 Failures and cancellation are also recorded; live notifications are best-effort. Cosmos history—not SignalR or application logs—is authoritative.
 
-## Execution API and scheduled investigations
+### Execution API and scheduled investigations
 
 To start an on-demand investigation, an external caller sends `POST /api/executions`; no request body is required. Read endpoint-triggered history through `GET /api/executions` or `GET /api/executions/{id}`. There is no Endpoint runs page; the API and scheduled investigations remain available.
 
@@ -76,9 +84,28 @@ Select an inbox proposal to reserve a private chat and prefill its draft. **Send
 
 Trace the implementation: [API entry point](src/AgentOps.Web/Features/Executions/ExecutionEndpoints.cs), [shared lifecycle](src/AgentOps.Web/Features/Executions/ExecuteAgent.cs), [investigation runner](src/AgentOps.Web/Features/Agent/ErrorInvestigationRunner.cs), and [execution feed](src/AgentOps.Web/Frontend/components/ExecutionFeed.vue). See [architecture](docs/architecture.md) for recovery and concurrency boundaries.
 
-## Run locally
+### Repository layout
 
-**Prerequisites:** stable .NET 10 SDK (selected by `src\global.json`), Node.js 24 LTS, PowerShell 7, Azure CLI, a native Windows Cosmos DB emulator or already running local emulator, and an Entra web/API registration. Run commands below from the repository root; the launcher builds managed code from `src`.
+| Path | Purpose |
+|---|---|
+| `src\AgentOps.slnx` | .NET solution and SDK/build settings. |
+| `src\AgentOps.Web\Features` | Agent, Chat, Executions, Identity, Insights, Notifications, Scheduling and Webhooks vertical slices. |
+| `src\AgentOps.Web\Infrastructure` | Typed options, Azure clients, identity/hosting composition, telemetry and readiness. |
+| `src\AgentOps.Web\Pages` / `Frontend` | Razor shells and Vue/SignalR source; Vite emits the browser bundle into `wwwroot`. |
+| `src\tests` | Managed, HTTP/SignalR, scheduler and opt-in integration/browser tests. |
+| `scripts` / `azure` / `containers` | Local tooling, Bicep/deployment automation and Linux image. |
+
+---
+
+<a id="local-development"></a>
+
+## 💻 Local development
+
+### Prerequisites
+
+Stable .NET 10 SDK (selected by `src\global.json`), Node.js 24 LTS, PowerShell 7, Azure CLI, a native Windows Cosmos DB emulator or already running local emulator, and an Entra web/API registration. Run commands below from the repository root; the launcher builds managed code from `src`.
+
+### Configure identity and services
 
 1. Follow [Entra setup](docs/local-development.md#configure-microsoft-entra-id): register `https://localhost:5080/signin-oidc`, configure the confidential web client, define roles/API scope, and assign your user a role. Local browsing never bypasses authentication.
 2. Store settings with [user-secrets](docs/local-development.md#store-local-settings), never tracked JSON. **Both the web-client credential and `Webhook:ApiKey` are required**; the guide shows secure input for these secrets. Configure the local emulator connection string and trust its certificate.
@@ -95,13 +122,16 @@ Trace the implementation: [API entry point](src/AgentOps.Web/Features/Executions
    ```
 
 3. Grant the Azure SDK identity **Monitoring Reader** on the monitored Insights resource and access to the Foundry project/model. Keep `InsightsTools:Enabled=true` with at least two calls for investigations. Background webhook delivery needs a concrete `AllowedHosts` entry (`localhost` by default) and a reachable local listener. Until telemetry/model access is ready, set `Scheduling:Enabled=false` to avoid failed scheduled investigations.
-4. Sign in, trust the development certificate, and launch:
 
-   ```powershell
-   az login --tenant '<tenant-guid>'
-   dotnet dev-certs https --trust
-   .\scripts\run-web.ps1
-   ```
+### Launch the application
+
+Sign in, trust the development certificate, and launch:
+
+```powershell
+az login --tenant '<tenant-guid>'
+dotnet dev-certs https --trust
+.\scripts\run-web.ps1
+```
 
 The launcher starts the native emulator if necessary, builds frontend/C# assets, waits for persistence readiness and opens **https://localhost:5080**. Development creates missing execution, chat **and notification** containers. Ctrl+C stops only the tracked web process; the shared emulator stays running.
 
@@ -115,7 +145,11 @@ Use your configured emulator connection string with `-SkipEmulatorStart`; regist
 > [!NOTE]
 > `Insights:ResourceId` selects telemetry to **read**; `ApplicationInsights:ConnectionString` selects where this app **writes** telemetry. These may be different resources. Azure SDK access uses `DefaultAzureCredential` outside Production and `ManagedIdentityCredential` in Production. Non-Development Cosmos requires trusted HTTPS, token authentication and pre-provisioned containers.
 
-## Run tests
+<a id="testing"></a>
+
+## 🧪 Testing
+
+### Standard verification
 
 ```powershell
 # Clean frontend install, frontend tests, Vite build and Release managed tests
@@ -133,7 +167,11 @@ dotnet test AgentOps.slnx --configuration Release
 Pop-Location
 ```
 
-MSTest covers shared execution behavior, authorization, cancellation, real Hangfire/SignalR integration and investigation contracts with test adapters. Real external integrations are opt-in:
+MSTest covers shared execution behavior, authorization, cancellation, real Hangfire/SignalR integration and investigation contracts with test adapters.
+
+### Opt-in integrations
+
+Real external integrations are opt-in:
 
 | Check | Prerequisite |
 |---|---|
@@ -143,7 +181,11 @@ MSTest covers shared execution behavior, authorization, cancellation, real Hangf
 
 Tests without required opt-in prerequisites report inconclusive, not simulated integration success. See [testing](docs/testing.md) for selectors, browser setup, Bicep/Pester checks and package-proxy configuration.
 
-## Deploy to Azure
+<a id="deployment-operations"></a>
+
+## 🚀 Deployment & operations
+
+### Deploy to Azure
 
 Follow the [Azure deployment guide](azure/README.md). `azure\scripts\Deploy-All.ps1` provisions resources, builds/pushes the Linux image with **ACR Tasks**, deploys its immutable digest, waits for readiness, then registers and validates the Event Grid subscription. No local Docker daemon is required. `-WhatIf` produces a local plan without Azure changes; local launch/test scripts do not deploy.
 
@@ -157,23 +199,18 @@ Follow the [Azure deployment guide](azure/README.md). `azure\scripts\Deploy-All.
 
 `azure\scripts\Initialize-EntraApplication.ps1` can create a dedicated web/API registration and configure callbacks; human role assignment and consent remain separate.
 
+### Production boundaries and health probes
+
 > [!CAUTION]
 > This is a demo, not a production hardening baseline. Keep one replica: scheduling, SignalR and cookie keys lack distributed backing. Design network isolation, persistent encrypted cookie keys, retention, recovery and action authorization/idempotency before production use or enabling remediation.
 
 Anonymous probes: `/health` and `/health/ready` check all three Cosmos containers; `/health/live` checks process liveness. They do not prove Insights or Foundry connectivity. Pages, execution API and SignalR remain protected; the Event Grid webhook uses its own API-key authentication.
 
-## Repository layout
+---
 
-| Path | Purpose |
-|---|---|
-| `src\AgentOps.slnx` | .NET solution and SDK/build settings. |
-| `src\AgentOps.Web\Features` | Agent, Chat, Executions, Identity, Insights, Notifications, Scheduling and Webhooks vertical slices. |
-| `src\AgentOps.Web\Infrastructure` | Typed options, Azure clients, identity/hosting composition, telemetry and readiness. |
-| `src\AgentOps.Web\Pages` / `Frontend` | Razor shells and Vue/SignalR source; Vite emits the browser bundle into `wwwroot`. |
-| `src\tests` | Managed, HTTP/SignalR, scheduler and opt-in integration/browser tests. |
-| `scripts` / `azure` / `containers` | Local tooling, Bicep/deployment automation and Linux image. |
+<a id="documentation"></a>
 
-## Documentation
+## 📚 Documentation
 
 | Goal | Guide |
 |---|---|
@@ -185,3 +222,9 @@ Anonymous probes: `/health` and `/health/ready` check all three Cosmos container
 | Provision and deploy | [Azure deployment](azure/README.md) |
 | Find script/image details | [Scripts](scripts/README.md) · [Containers](containers/README.md) |
 | Browse all guides | [Documentation index](docs/README.md) |
+
+<a id="license"></a>
+
+## ⚖️ License
+
+Licensed under the [MIT License](LICENSE). Copyright © 2026 Bojan Vrhovnik.
